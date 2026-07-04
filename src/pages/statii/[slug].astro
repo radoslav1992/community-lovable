@@ -11,7 +11,17 @@ const article = await db
 
 if (!article || !article.content) return new Response(null, { status: 404, statusText: 'Not Found' });
 
-const paragraphs = article.content.split(/\n\n+/).filter(Boolean);
+interface Block {
+  type: 'h2' | 'p';
+  text: string;
+}
+const blocks: Block[] = article.content
+  .split(/\n\n+/)
+  .filter(Boolean)
+  .map((raw: string): Block =>
+    raw.startsWith('## ') ? { type: 'h2', text: raw.slice(3).trim() } : { type: 'p', text: raw }
+  );
+const firstParagraph = blocks.find((b) => b.type === 'p')?.text ?? article.title;
 const jsonLd = [
   {
     '@context': 'https://schema.org',
@@ -26,7 +36,7 @@ const jsonLd = [
 ---
 <Base
   title={`${article.title} — Българска Lovable Общност`}
-  description={paragraphs[0]?.slice(0, 160) ?? article.title}
+  description={firstParagraph.slice(0, 160)}
   canonicalPath={`/statii/${article.slug}`}
   ogType="article"
   jsonLd={jsonLd}
@@ -36,7 +46,7 @@ const jsonLd = [
     <article class="card">
       <div class="meta">{article.meta}</div>
       <h1>{article.title}</h1>
-      {paragraphs.map((p: string) => <p>{p}</p>)}
+      {blocks.map((b) => (b.type === 'h2' ? <h2>{b.text}</h2> : <p>{b.text}</p>))}
     </article>
   </main>
 </Base>
@@ -48,6 +58,7 @@ const jsonLd = [
   article { border-radius: 18px; padding: 28px; }
   .meta { font-size: 13px; color: var(--faint); font-weight: 700; margin-bottom: 8px; }
   h1 { margin: 0 0 16px; font-size: 26px; font-weight: 900; line-height: 1.25; letter-spacing: -0.01em; }
+  h2 { margin: 26px 0 10px; font-size: 19px; font-weight: 800; letter-spacing: -0.01em; }
   p { margin: 0 0 14px; font-size: 16px; line-height: 1.65; color: var(--ink-soft); }
   p:last-child { margin-bottom: 0; }
 </style>
