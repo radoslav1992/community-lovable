@@ -1,0 +1,110 @@
+---
+import Base from '../layouts/Base.astro';
+import { initials, avatarGradient, ROLE_LABELS, ROLE_STYLES } from '../lib/format';
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect('/vhod');
+if (user.role !== 'admin') return Astro.redirect('/');
+
+const db = Astro.locals.runtime.env.DB;
+const [usersRes, reportsRes] = await db.batch([
+  db.prepare('SELECT id, name, email, role, blocked FROM users ORDER BY created_at ASC LIMIT 100'),
+  db.prepare(`SELECT id, title, reason, reporter_name FROM reports WHERE status = 'pending' ORDER BY created_at ASC`),
+]);
+const users = usersRes.results as any[];
+const reports = reportsRes.results as any[];
+---
+<Base title="Админ панел — Българска Lovable Общност" description="Управление на общността." noindex={true}>
+  <main>
+    <div>
+      <h1>Админ панел</h1>
+      <p class="sub">Управление на потребители и докладвано съдържание.</p>
+    </div>
+
+    <section class="card">
+      <div class="sec-head">ПОТРЕБИТЕЛИ</div>
+      {users.map((u: any, i: number) => (
+        <div class="user-row">
+          <div class="avatar u-avatar" style={`background:${avatarGradient(i)}`}>{initials(u.name)}</div>
+          <div class="u-name">{u.name}</div>
+          <div class="u-email">{u.email}</div>
+          <span class="tag" style={ROLE_STYLES[u.role]}>{ROLE_LABELS[u.role]}</span>
+          <form method="post" action="/api/admin/block">
+            <input type="hidden" name="user_id" value={u.id} />
+            {u.id === user.id ? (
+              <span class="self">това си ти</span>
+            ) : (
+              <button type="submit" class:list={['block-btn', { blocked: !!u.blocked }]}>
+                {u.blocked ? 'Отблокирай' : 'Блокирай'}
+              </button>
+            )}
+          </form>
+        </div>
+      ))}
+    </section>
+
+    <section class="card">
+      <div class="sec-head">ДОКЛАДВАНО СЪДЪРЖАНИЕ</div>
+      {reports.length === 0 && <div class="no-reports">Няма чакащи доклади.</div>}
+      {reports.map((r: any) => (
+        <div class="report-row">
+          <div class="r-info">
+            <div class="r-title">{r.title}</div>
+            <div class="r-reason">Причина: {r.reason} · от {r.reporter_name}</div>
+          </div>
+          <form method="post" action="/api/admin/report">
+            <input type="hidden" name="report_id" value={r.id} />
+            <button type="submit" name="action" value="approve" class="btn btn-light approve">Одобри</button>
+          </form>
+          <form method="post" action="/api/admin/report">
+            <input type="hidden" name="report_id" value={r.id} />
+            <button type="submit" name="action" value="hide" class="btn btn-danger hide">Скрий поста</button>
+          </form>
+        </div>
+      ))}
+    </section>
+  </main>
+</Base>
+
+<style>
+  main { max-width: 860px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 20px; }
+  h1 { font-size: 28px; font-weight: 900; margin: 0 0 4px; letter-spacing: -0.02em; }
+  .sub { margin: 0; color: var(--muted); font-size: 15px; }
+  section.card { border-radius: 18px; overflow: hidden; padding: 0; }
+  .sec-head {
+    padding: 16px 22px; border-bottom: 1px solid var(--divider);
+    font-size: 13px; font-weight: 800; letter-spacing: 0.06em; color: var(--muted);
+  }
+  .user-row {
+    padding: 14px 22px; border-bottom: 1px solid var(--divider);
+    display: grid; grid-template-columns: 40px 1.4fr 1.6fr auto auto;
+    gap: 14px; align-items: center;
+  }
+  .user-row:last-child { border-bottom: none; }
+  .u-avatar { width: 36px; height: 36px; font-size: 12px; }
+  .u-name { font-weight: 800; font-size: 15px; }
+  .u-email { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
+  .block-btn {
+    padding: 7px 14px; border-radius: 99px; font-weight: 700; font-size: 13px;
+    cursor: pointer; white-space: nowrap;
+    border: 1px solid var(--border-input); background: #fff; color: var(--danger);
+  }
+  .block-btn.blocked { border: none; background: var(--ink); color: var(--cream); }
+  .self { font-size: 12px; color: var(--faint); font-weight: 600; white-space: nowrap; }
+  .no-reports { padding: 22px; font-size: 14px; color: var(--faint); font-weight: 600; }
+  .report-row {
+    padding: 14px 22px; border-bottom: 1px solid var(--divider);
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  }
+  .report-row:last-child { border-bottom: none; }
+  .r-info { flex: 1; min-width: 220px; }
+  .r-title { font-weight: 800; font-size: 15px; }
+  .r-reason { font-size: 13px; color: var(--danger); font-weight: 700; }
+  .approve { padding: 8px 14px; font-size: 13px; color: var(--ink-body); }
+  .hide { padding: 8px 14px; font-size: 13px; }
+  @media (max-width: 640px) {
+    .user-row { grid-template-columns: 40px 1fr auto; }
+    .u-email { display: none; }
+    .user-row .tag { display: none; }
+  }
+</style>

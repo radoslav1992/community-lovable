@@ -1,0 +1,235 @@
+---
+import Base from '../layouts/Base.astro';
+import PostCard from '../components/PostCard.astro';
+import { TAGS, eventDayMonth } from '../lib/format';
+
+const db = Astro.locals.runtime.env.DB;
+const user = Astro.locals.user;
+
+const filter = Astro.url.searchParams.get('filtar');
+const activeFilter = filter && TAGS.includes(filter) ? filter : null;
+const composerOpen = Astro.url.searchParams.get('post') === 'new' && !!user;
+const error = Astro.url.searchParams.get('greshka');
+
+const postsQuery = `
+  SELECT p.id, p.tag, p.title, p.slug, p.excerpt, p.created_at,
+    u.name AS author_name,
+    p.base_votes + (SELECT COUNT(*) FROM votes v WHERE v.post_id = p.id) AS votes,
+    (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
+    EXISTS(SELECT 1 FROM votes v2 WHERE v2.post_id = p.id AND v2.user_id = ?1) AS voted
+  FROM posts p JOIN users u ON u.id = p.user_id
+  WHERE p.hidden = 0 ${activeFilter ? 'AND p.tag = ?2' : ''}
+  ORDER BY p.created_at DESC
+  LIMIT 50`;
+
+const stmt = activeFilter
+  ? db.prepare(postsQuery).bind(user?.id ?? 0, activeFilter)
+  : db.prepare(postsQuery).bind(user?.id ?? 0);
+
+const [postsRes, stats, nextEvent] = await Promise.all([
+  stmt.all(),
+  db
+    .prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM users WHERE blocked = 0) AS members,
+        (SELECT COUNT(*) FROM posts WHERE hidden = 0) AS topics,
+        (SELECT COUNT(DISTINCT user_id) FROM sessions WHERE expires_at > datetime('now')) AS online`
+    )
+    .first<{ members: number; topics: number; online: number }>(),
+  db
+    .prepare(`SELECT title, slug, starts_at, place FROM events WHERE starts_at > datetime('now') ORDER BY starts_at LIMIT 1`)
+    .first<{ title: string; slug: string; starts_at: string; place: string }>(),
+]);
+
+const posts = postsRes.results as any[];
+const nf = new Intl.NumberFormat('bg-BG');
+const eventDate = nextEvent ? eventDayMonth(nextEvent.starts_at) : null;
+// "📍 betahaus, София · 18:30 – 21:00" → "betahaus · 18:30"
+const eventPlaceShort = nextEvent
+  ? nextEvent.place.replace(/^[^\p{L}\d]+/u, '').split('·').map((s) => s.trim().split(',')[0]).slice(0, 2).join(' · ')
+  : '';
+
+const filters = [{ label: 'Всички', href: '/' }, ...TAGS.map((t) => ({ label: t, href: `/?filtar=${encodeURIComponent(t)}` }))];
+
+const description = 'Мястото на българските Lovable билдъри. Споделяй проекти, задавай въпроси, учи с нас — дискусии, събития, новини и обучение на български.';
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'WebSite',
+    name: 'Българска Lovable Общност',
+    url: 'https://communitylovable.bg/',
+    inLanguage: 'bg',
+    potentialAction: {
+      '@type': 'SearchAction',
+      target: 'https://communitylovable.bg/tarsene?q={search_term_string}',
+      'query-input': 'required name=search_term_string',
+    },
+  },
+];
+---
+<Base
+  title="Българска Lovable Общност — начало"
+  description={description}
+  canonicalPath="/"
+  jsonLd={jsonLd}
+>
+  <main>
+    <section class="feed">
+      <div class="filters">
+        {filters.map((f) => (
+          <a
+            href={f.href}
+            class:list={['filter', { active: (f.label === 'Всички' && !activeFilter) || f.label === activeFilter }]}
+          >{f.label}</a>
+        ))}
+      </div>
+
+      {error === 'blokiran' && <div class="notice notice-error">Профилът ти е блокиран и не може да публикува.</div>}
+      {error === 'zaglavie' && <div class="notice notice-error">Публикацията трябва да има заглавие.</div>}
+
+      {user && !composerOpen && (
+        <a href="/?post=new#composer" id="composer" class="composer-closed">Сподели нещо с общността…</a>
+      )}
+      {!user && (
+        <a href="/vhod" class="composer-closed">Влез, за да споделиш нещо с общността…</a>
+      )}
+      {composerOpen && (
+        <form id="composer" class="composer" method="post" action="/api/posts">
+          <input name="title" placeholder="Заглавие на публикацията" maxlength="200" required autofocus />
+          <textarea name="body" placeholder="Разкажи повече — какво направи, какво те затрудни, какво откри?" rows="3"></textarea>
+          <select name="tag">
+            {TAGS.map((t) => <option value={t}>{t}</option>)}
+          </select>
+          <div class="composer-actions">
+            <a href="/" class="btn btn-muted">Отказ</a>
+            <button type="submit" class="btn btn-dark">Публикувай</button>
+          </div>
+        </form>
+      )}
+
+      {posts.map((post) => <PostCard post={post} />)}
+      {posts.length === 0 && <div class="card empty">Няма публикации в тази категория — бъди първи!</div>}
+    </section>
+
+    <aside>
+      <div class="hero">
+        <img class="hero-bg" src="/assets/og-dark.png" alt="" />
+        <div class="hero-content">
+          <img class="hero-logo" src="/assets/wordmark-light.png" alt="Lovable" />
+          <p>Мястото на българските билдъри. Споделяй проекти, задавай въпроси, учи с нас.</p>
+          <div class="stats">
+            <div><b>{nf.format(stats?.members ?? 0)}</b><br />членове</div>
+            <div><b>{nf.format(stats?.topics ?? 0)}</b><br />теми</div>
+            <div><b>{nf.format(stats?.online ?? 0)}</b><br />онлайн</div>
+          </div>
+        </div>
+      </div>
+
+      {nextEvent && eventDate && (
+        <div class="card next-event">
+          <div class="label">СЛЕДВАЩО СЪБИТИЕ</div>
+          <div class="event-row">
+            <div class="date-chip">
+              <div class="day">{eventDate.day.replace(/^0/, '')}</div>
+              <div class="month">{eventDate.month}</div>
+            </div>
+            <div>
+              <div class="event-title">{nextEvent.title}</div>
+              <div class="event-place">{eventPlaceShort}</div>
+            </div>
+          </div>
+          <a href="/sabitiya" class="btn btn-outline all-events">Виж всички събития</a>
+        </div>
+      )}
+    </aside>
+  </main>
+</Base>
+
+<script>
+  // Progressive enhancement: vote without a full page reload.
+  document.querySelectorAll('form[data-vote]').forEach((form) => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = form as HTMLFormElement;
+      const res = await fetch(f.action, {
+        method: 'POST',
+        body: new FormData(f),
+        headers: { Accept: 'application/json' },
+      });
+      if (res.redirected || res.status === 401) { window.location.href = '/vhod'; return; }
+      if (!res.ok) return;
+      const data = (await res.json()) as { votes: number; voted: boolean };
+      const count = f.parentElement?.querySelector('[data-vote-count]');
+      if (count) count.textContent = String(data.votes);
+      f.querySelector('button')?.classList.toggle('voted', data.voted);
+    });
+  });
+</script>
+
+<style>
+  main {
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 28px 24px;
+    display: flex;
+    gap: 28px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+  }
+  .feed { flex: 1 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .filter {
+    padding: 7px 14px; border-radius: 99px; font-size: 13px; font-weight: 700;
+    border: 1px solid var(--border-input); background: #fff; color: var(--muted);
+  }
+  .filter:hover { border-color: var(--ink); }
+  .filter.active { border-color: var(--ink); background: var(--ink); color: var(--cream); }
+  .composer-closed {
+    display: block; background: #fff; border: 1px solid var(--border);
+    border-radius: 16px; padding: 14px 18px; color: var(--faint); font-size: 15px; cursor: text;
+  }
+  .composer-closed:hover { border-color: var(--accent); }
+  .composer {
+    background: #fff; border: 1.5px solid var(--accent); border-radius: 16px;
+    padding: 18px; display: flex; flex-direction: column; gap: 12px; animation: fadeUp 0.2s ease;
+  }
+  .composer input[name="title"] {
+    border: none; outline: none; font-size: 18px; font-weight: 700;
+    color: var(--ink); padding: 0; background: none;
+  }
+  .composer textarea {
+    border: none; outline: none; font-size: 15px; color: var(--ink-body);
+    resize: vertical; padding: 0; background: none; line-height: 1.5;
+  }
+  .composer select {
+    align-self: flex-start; padding: 7px 12px; border-radius: 99px;
+    border: 1px solid var(--border-input); font-size: 13px; font-weight: 700;
+    color: var(--muted); background: #fff; outline: none; cursor: pointer;
+  }
+  .composer-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  .empty { padding: 22px; font-size: 14px; color: var(--faint); font-weight: 600; }
+
+  aside { flex: 0 1 300px; min-width: 260px; display: flex; flex-direction: column; gap: 16px; }
+  .hero {
+    background: var(--ink); border-radius: 18px; padding: 22px;
+    color: var(--cream); position: relative; overflow: hidden;
+  }
+  .hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.55; }
+  .hero-content { position: relative; }
+  .hero-logo { height: 22px; object-fit: contain; margin-bottom: 10px; }
+  .hero p { margin: 0 0 14px; font-size: 14px; line-height: 1.55; }
+  .stats { display: flex; gap: 18px; font-size: 13px; color: #D8D4C8; }
+  .stats b { color: #fff; font-size: 16px; }
+  .next-event { border-radius: 18px; padding: 20px; }
+  .label { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--faint); margin-bottom: 12px; }
+  .event-row { display: flex; gap: 14px; align-items: center; }
+  .date-chip {
+    width: 52px; border-radius: 12px; background: var(--grad-hot);
+    color: #fff; text-align: center; padding: 8px 0; flex-shrink: 0;
+  }
+  .date-chip .day { font-size: 20px; font-weight: 800; line-height: 1; }
+  .date-chip .month { font-size: 11px; font-weight: 700; }
+  .event-title { font-weight: 800; font-size: 15px; line-height: 1.3; }
+  .event-place { font-size: 13px; color: var(--muted); }
+  .all-events { margin-top: 14px; width: 100%; font-size: 13px; padding: 9px; }
+</style>

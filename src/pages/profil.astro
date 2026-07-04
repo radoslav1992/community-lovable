@@ -1,0 +1,90 @@
+---
+import Base from '../layouts/Base.astro';
+import { initials, memberSince, timeAgo, USER_GRADIENT, ROLE_LABELS } from '../lib/format';
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect('/vhod');
+const db = Astro.locals.runtime.env.DB;
+
+const [statsRes, activityRes] = await db.batch([
+  db
+    .prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM posts WHERE user_id = ?1 AND hidden = 0) AS post_count,
+        (SELECT COUNT(*) FROM comments WHERE user_id = ?1) AS comment_count,
+        (SELECT COALESCE(SUM(base_votes), 0) FROM posts WHERE user_id = ?1 AND hidden = 0)
+          + (SELECT COUNT(*) FROM votes v JOIN posts p ON p.id = v.post_id WHERE p.user_id = ?1) AS points`
+    )
+    .bind(user.id),
+  db
+    .prepare(
+      `SELECT * FROM (
+        SELECT 'post' AS kind, p.title AS text, p.slug AS slug, p.created_at AS created_at
+        FROM posts p WHERE p.user_id = ?1 AND p.hidden = 0
+        UNION ALL
+        SELECT 'comment' AS kind, c.body AS text, p2.slug AS slug, c.created_at AS created_at
+        FROM comments c JOIN posts p2 ON p2.id = c.post_id WHERE c.user_id = ?1
+      ) ORDER BY created_at DESC LIMIT 10`
+    )
+    .bind(user.id),
+]);
+
+const stats = (statsRes.results as any[])[0] ?? { post_count: 0, comment_count: 0, points: 0 };
+const activity = activityRes.results as any[];
+---
+<Base title={`${user.name} — профил`} description="Твоят профил в Българската Lovable Общност." noindex={true}>
+  <main>
+    <div class="card head">
+      <div class="avatar big" style={`background:${USER_GRADIENT}`}>{initials(user.name)}</div>
+      <div class="who">
+        <h1>{user.name}</h1>
+        <div class="meta">
+          @{user.username} · {memberSince(user.created_at)}
+          {user.role !== 'member' && <> · <span class="role">{ROLE_LABELS[user.role]}</span></>}
+        </div>
+        {user.bio && <div class="bio">{user.bio}</div>}
+      </div>
+      <div class="stats">
+        <div><div class="num">{stats.post_count}</div><div class="lbl">публикации</div></div>
+        <div><div class="num">{stats.comment_count}</div><div class="lbl">коментара</div></div>
+        <div><div class="num">{stats.points}</div><div class="lbl">точки</div></div>
+      </div>
+    </div>
+
+    <h2>Последна активност</h2>
+    <div class="card activity">
+      {activity.map((a: any) => (
+        <a href={`/t/${a.slug}`} class="row">
+          <div class="kind">{a.kind === 'post' ? 'ПУБЛИКАЦИЯ' : 'КОМЕНТАР'} · {timeAgo(a.created_at)}</div>
+          {a.kind === 'post'
+            ? <div class="title">{a.text}</div>
+            : <div class="quote">„{a.text}“</div>}
+        </a>
+      ))}
+      {activity.length === 0 && <div class="row empty">Още нямаш активност — сподели първата си публикация!</div>}
+    </div>
+  </main>
+</Base>
+
+<style>
+  main { max-width: 760px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .head { border-radius: 20px; padding: 28px; display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+  .big { width: 76px; height: 76px; font-size: 26px; }
+  .who { flex: 1; min-width: 200px; }
+  h1 { margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.01em; }
+  .meta { font-size: 14px; color: var(--muted); font-weight: 600; }
+  .role { color: var(--accent); font-weight: 800; }
+  .bio { font-size: 14px; color: var(--ink-soft); margin-top: 6px; }
+  .stats { display: flex; gap: 24px; text-align: center; }
+  .num { font-weight: 800; font-size: 20px; }
+  .lbl { font-size: 12px; color: var(--faint); font-weight: 700; }
+  h2 { margin: 8px 0 0; font-size: 16px; font-weight: 800; color: var(--ink-body); }
+  .activity { border-radius: 18px; overflow: hidden; padding: 0; }
+  .row { display: block; padding: 16px 22px; border-bottom: 1px solid var(--divider); }
+  .row:last-child { border-bottom: none; }
+  .row:hover { background: var(--card-hover); }
+  .kind { font-size: 12px; color: var(--faint); font-weight: 700; margin-bottom: 2px; }
+  .title { font-weight: 800; font-size: 15px; }
+  .quote { font-size: 15px; color: var(--ink-soft); }
+  .empty { font-size: 14px; color: var(--faint); font-weight: 600; }
+</style>

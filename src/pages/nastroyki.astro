@@ -1,0 +1,123 @@
+---
+import Base from '../layouts/Base.astro';
+
+const user = Astro.locals.user;
+if (!user) return Astro.redirect('/vhod');
+
+const saved = Astro.url.searchParams.get('zapazeno') === '1';
+const error = Astro.url.searchParams.get('greshka');
+const ERRORS: Record<string, string> = {
+  'zaet-imeyl': 'Вече има профил с този имейл.',
+  'nevalidni-danni': 'Моля, попълни полетата коректно.',
+};
+
+const toggles = [
+  {
+    key: 'notif_email',
+    on: !!user.notif_email,
+    title: 'Имейл известия',
+    desc: 'Отговори на твои публикации и коментари',
+  },
+  {
+    key: 'notif_digest',
+    on: !!user.notif_digest,
+    title: 'Седмичен бюлетин',
+    desc: 'Най-интересното от общността всеки петък',
+  },
+  {
+    key: 'public_profile',
+    on: !!user.public_profile,
+    title: 'Публичен профил',
+    desc: 'Профилът ти да се вижда от нерегистрирани',
+  },
+];
+---
+<Base title="Настройки — Българска Lovable Общност" description="Настройки на профила." noindex={true}>
+  <main>
+    <h1>Настройки</h1>
+
+    {saved && <div class="notice notice-ok">Промените са запазени.</div>}
+    {error && <div class="notice notice-error">{ERRORS[error] ?? 'Нещо се обърка.'}</div>}
+
+    <section class="card">
+      <h2 class="section-label">ПРОФИЛ</h2>
+      <form method="post" action="/api/settings" class="profile-form">
+        <label>Име<input class="input" name="name" value={user.name} maxlength="80" required /></label>
+        <label>Имейл<input class="input" type="email" name="email" value={user.email} required /></label>
+        <label>Кратко представяне<textarea class="input" name="bio" rows="2" maxlength="300">{user.bio}</textarea></label>
+        <button type="submit" class="btn btn-dark">Запази промените</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2 class="section-label">ИЗВЕСТИЯ</h2>
+      {toggles.map((t, i) => (
+        <div class:list={['toggle-row', { last: i === toggles.length - 1 }]}>
+          <div>
+            <div class="t-title">{t.title}</div>
+            <div class="t-desc">{t.desc}</div>
+          </div>
+          <form method="post" action="/api/settings/toggle">
+            <input type="hidden" name="key" value={t.key} />
+            <button type="submit" class:list={['switch', { on: t.on }]} role="switch" aria-checked={t.on} aria-label={t.title}>
+              <span class="knob"></span>
+            </button>
+          </form>
+        </div>
+      ))}
+    </section>
+
+    <section class="card">
+      <h2 class="section-label">ЕЗИК</h2>
+      <select class="input lang" disabled>
+        <option selected>Български</option>
+        <option>English</option>
+      </select>
+    </section>
+
+    <section class="card danger">
+      <h2 class="section-label red">ОПАСНА ЗОНА</h2>
+      <p>Изтриването на акаунта е необратимо. Публикациите ти остават анонимизирани.</p>
+      <form
+        method="post"
+        action="/api/account/delete"
+        onsubmit="return confirm('Сигурен ли си? Изтриването на акаунта е необратимо.')"
+      >
+        <button type="submit" class="btn btn-danger-outline">Изтрий акаунта</button>
+      </form>
+    </section>
+  </main>
+</Base>
+
+<style>
+  main { max-width: 640px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 20px; }
+  h1 { font-size: 28px; font-weight: 900; margin: 0; letter-spacing: -0.02em; }
+  section.card { border-radius: 18px; padding: 24px; }
+  .section-label { margin: 0 0 16px; font-size: 14px; }
+  .profile-form { display: flex; flex-direction: column; gap: 12px; }
+  label { font-size: 13px; font-weight: 700; color: var(--muted); }
+  label .input { margin-top: 6px; display: block; }
+  textarea.input { resize: vertical; }
+  .profile-form .btn { align-self: flex-start; padding: 10px 20px; }
+  .toggle-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 0; border-bottom: 1px solid var(--divider); gap: 16px;
+  }
+  .toggle-row.last { border-bottom: none; }
+  .t-title { font-weight: 700; font-size: 15px; }
+  .t-desc { font-size: 13px; color: var(--faint); }
+  .switch {
+    width: 46px; height: 26px; border-radius: 99px; border: none; cursor: pointer;
+    position: relative; flex-shrink: 0; transition: background 0.15s; background: #D8D4C8;
+  }
+  .switch.on { background: var(--accent); }
+  .knob {
+    position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+    border-radius: 50%; background: #fff; transition: left 0.15s;
+  }
+  .switch.on .knob { left: 23px; }
+  .lang { width: 220px; }
+  section.danger { border: 1.5px solid #F9C4C2; }
+  .red { color: var(--danger); margin-bottom: 8px; }
+  section.danger p { margin: 0 0 14px; font-size: 14px; color: var(--muted); }
+</style>

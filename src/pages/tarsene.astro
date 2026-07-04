@@ -1,0 +1,53 @@
+---
+import Base from '../layouts/Base.astro';
+import PostCard from '../components/PostCard.astro';
+
+const db = Astro.locals.runtime.env.DB;
+const user = Astro.locals.user;
+const q = (Astro.url.searchParams.get('q') ?? '').trim().slice(0, 100);
+
+let posts: any[] = [];
+if (q) {
+  const like = `%${q.replace(/[%_]/g, '')}%`;
+  posts = (
+    await db
+      .prepare(
+        `SELECT p.id, p.tag, p.title, p.slug, p.excerpt, p.created_at,
+          u.name AS author_name,
+          p.base_votes + (SELECT COUNT(*) FROM votes v WHERE v.post_id = p.id) AS votes,
+          (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
+          EXISTS(SELECT 1 FROM votes v2 WHERE v2.post_id = p.id AND v2.user_id = ?1) AS voted
+        FROM posts p JOIN users u ON u.id = p.user_id
+        WHERE p.hidden = 0 AND (p.title LIKE ?2 OR p.body LIKE ?2 OR p.excerpt LIKE ?2)
+        ORDER BY p.created_at DESC LIMIT 30`
+      )
+      .bind(user?.id ?? 0, like)
+      .all()
+  ).results as any[];
+}
+---
+<Base
+  title={q ? `„${q}“ — търсене` : 'Търсене — Българска Lovable Общност'}
+  description="Търси публикации и дискусии в Българската Lovable Общност."
+  noindex={true}
+>
+  <main>
+    <h1 class="page-title">Търсене</h1>
+    {q
+      ? <p class="page-sub">{posts.length} {posts.length === 1 ? 'резултат' : 'резултата'} за „{q}“</p>
+      : <p class="page-sub">Въведи дума за търсене в полето горе.</p>}
+    <div class="results">
+      {posts.map((post) => <PostCard post={post} />)}
+      {q && posts.length === 0 && (
+        <div class="card empty">Нищо не намерихме. Опитай с друга дума или <a href="/?post=new#composer">попитай общността</a>.</div>
+      )}
+    </div>
+  </main>
+</Base>
+
+<style>
+  main { max-width: 760px; margin: 0 auto; padding: 32px 24px; }
+  .results { display: flex; flex-direction: column; gap: 16px; }
+  .empty { padding: 22px; font-size: 14px; color: var(--faint); font-weight: 600; }
+  .empty a { color: var(--accent); font-weight: 700; }
+</style>

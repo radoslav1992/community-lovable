@@ -1,0 +1,91 @@
+---
+import Base from '../layouts/Base.astro';
+
+if (Astro.locals.user) return Astro.redirect('/');
+
+const tab = Astro.url.searchParams.get('tab') === 'registratsiya' ? 'register' : 'login';
+const error = Astro.url.searchParams.get('greshka');
+const emailPrefill = Astro.url.searchParams.get('email') ?? '';
+
+const ERRORS: Record<string, string> = {
+  'greshni-danni': 'Грешен имейл или парола.',
+  'zaet-imeyl': 'Вече има профил с този имейл.',
+  'zaeto-ime': 'Това потребителско име е заето.',
+  'slaba-parola': 'Паролата трябва да е поне 8 знака.',
+  'nevalidni-danni': 'Моля, попълни всички полета коректно.',
+  'blokiran': 'Този профил е блокиран.',
+};
+const errorText = error ? ERRORS[error] ?? 'Нещо се обърка. Опитай отново.' : null;
+
+const description = 'Влез или си направи профил в Българската Lovable Общност за минута.';
+---
+<Base title="Вход и регистрация — Българска Lovable Общност" description={description} canonicalPath="/vhod" noindex={true}>
+  <main>
+    <img class="bg" src="/assets/og-color.png" alt="" />
+    <div class="panel">
+      <div class="head">
+        <img src="/assets/logomark.png" alt="Lovable" width="44" height="44" />
+        <div class="name">Lovable Общност</div>
+        <div class="sub">Влез или си направи профил за минута.</div>
+      </div>
+
+      <div class="tabs">
+        <a href="/vhod" class:list={['tab-btn', { on: tab === 'login' }]}>Вход</a>
+        <a href="/vhod?tab=registratsiya" class:list={['tab-btn', { on: tab === 'register' }]}>Регистрация</a>
+      </div>
+
+      {errorText && <div class="notice notice-error">{errorText}</div>}
+
+      <form method="post" action={tab === 'register' ? '/api/auth/register' : '/api/auth/login'} class="form">
+        {tab === 'register' && <input class="input" name="name" placeholder="Име и фамилия" maxlength="80" required />}
+        <input class="input" type="email" name="email" placeholder="Имейл" value={emailPrefill} required />
+        <input class="input" type="password" name="password" placeholder="Парола" minlength={tab === 'register' ? 8 : undefined} required />
+        <button type="submit" class="btn btn-dark submit">{tab === 'register' ? 'Създай профил' : 'Влез'}</button>
+      </form>
+
+      <div class="or">
+        <div class="line"></div><span>ИЛИ</span><div class="line"></div>
+      </div>
+
+      <div class="oauth">
+        <button type="button" class="btn btn-light" disabled title="Очаквайте скоро">Продължи с Google · скоро</button>
+        <button type="button" class="btn btn-light" disabled title="Очаквайте скоро">Продължи с GitHub · скоро</button>
+      </div>
+
+      <p class="terms">С влизането приемаш правилата на общността и политиката за поверителност.</p>
+    </div>
+  </main>
+</Base>
+
+<style>
+  main {
+    min-height: calc(100vh - 64px); position: relative;
+    display: flex; align-items: flex-start; justify-content: center; padding: 48px 24px;
+  }
+  .bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .panel {
+    position: relative; width: 420px; max-width: 100%;
+    background: var(--bg); border-radius: 22px; padding: 32px;
+    box-shadow: 0 24px 64px rgba(27, 27, 27, 0.28);
+  }
+  .head { text-align: center; margin-bottom: 22px; }
+  .head img { width: 44px; height: 44px; object-fit: contain; margin-bottom: 10px; }
+  .name { font-weight: 900; font-size: 18px; letter-spacing: -0.01em; }
+  .sub { font-size: 14px; color: var(--muted); margin-top: 4px; }
+  .tabs { display: flex; background: var(--hover-bg); border-radius: 99px; padding: 4px; margin-bottom: 20px; }
+  .tab-btn {
+    flex: 1; padding: 9px; border-radius: 99px; text-align: center;
+    font-size: 14px; font-weight: 700; color: var(--muted);
+  }
+  .tab-btn.on { background: var(--ink); color: var(--cream); font-weight: 800; }
+  .notice { margin-bottom: 12px; }
+  .form { display: flex; flex-direction: column; gap: 12px; }
+  .submit { padding: 12px; font-weight: 800; font-size: 15px; margin-top: 4px; }
+  .or { display: flex; align-items: center; gap: 12px; margin: 18px 0; }
+  .or .line { flex: 1; height: 1px; background: var(--border-input); }
+  .or span { font-size: 12px; color: var(--faint); font-weight: 700; }
+  .oauth { display: flex; flex-direction: column; gap: 10px; }
+  .oauth .btn { padding: 11px; }
+  .oauth .btn:disabled { cursor: not-allowed; opacity: 0.6; }
+  .terms { margin: 18px 0 0; font-size: 12px; color: var(--faint); text-align: center; line-height: 1.5; }
+</style>

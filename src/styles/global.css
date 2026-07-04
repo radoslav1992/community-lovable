@@ -1,0 +1,161 @@
+/* Българска Lovable Общност — design system from the Lovable handoff */
+
+@font-face {
+  font-family: 'Camera Plain';
+  src: url('/fonts/CameraPlain.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #F7F4ED;
+  --ink: #1B1B1B;
+  --ink-soft: #3A362E;
+  --ink-body: #444;
+  --muted: #6E695E;
+  --faint: #9B968A;
+  --border: #E7E3D6;
+  --border-input: #E2DECF;
+  --divider: #F0EDE3;
+  --hover-bg: #EDE9DE;
+  --card: #fff;
+  --card-hover: #FBF9F3;
+  --accent: #FF0178;
+  --accent-soft: #FFE0F1;
+  --danger: #F7101D;
+  --danger-soft: #FDEBEA;
+  --cream: #F7F4ED;
+  --grad-brand: linear-gradient(135deg, #FF6D1B, #FF0178, #4B73FF);
+  --grad-hot: linear-gradient(160deg, #FF6D1B, #FF0178);
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Camera Plain', system-ui, sans-serif;
+  font-size: 16px;
+  min-height: 100vh;
+}
+
+input, button, select, textarea { font-family: inherit; }
+
+a { color: inherit; text-decoration: none; }
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---- shared components ---- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 99px;
+  border: none;
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 9px 20px;
+  white-space: nowrap;
+  transition: background 0.12s, color 0.12s, opacity 0.12s, border-color 0.12s;
+}
+
+.btn-dark { background: var(--ink); color: var(--cream); }
+.btn-dark:hover { background: #333; }
+
+.btn-outline { background: none; border: 1px solid var(--ink); color: var(--ink); }
+.btn-outline:hover { background: var(--ink); color: var(--cream); }
+
+.btn-light { background: #fff; border: 1px solid var(--border-input); color: var(--ink); }
+.btn-light:hover { background: var(--card-hover); }
+
+.btn-muted { background: #fff; border: 1px solid var(--border-input); color: var(--muted); font-weight: 600; }
+.btn-muted:hover { background: var(--card-hover); }
+
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-danger:hover { background: #D50E19; }
+
+.btn-danger-outline { background: none; border: 1.5px solid var(--danger); color: var(--danger); }
+.btn-danger-outline:hover { background: var(--danger-soft); }
+
+.btn-accent { background: var(--accent); color: #fff; }
+.btn-accent:hover { opacity: 0.88; }
+
+.tag {
+  display: inline-block;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 10px;
+  border-radius: 99px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.input {
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--border-input);
+  font-size: 15px;
+  outline: none;
+  background: #fff;
+  color: var(--ink);
+  width: 100%;
+}
+
+.input:focus { border-color: var(--accent); }
+
+.avatar {
+  border-radius: 50%;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.section-label {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.page-title {
+  font-size: 32px;
+  font-weight: 900;
+  margin: 0 0 6px;
+  letter-spacing: -0.02em;
+}
+
+.page-sub { margin: 0 0 28px; color: var(--muted); font-size: 16px; }
+
+.notice {
+  border-radius: 16px;
+  padding: 14px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  animation: fadeUp 0.2s ease;
+}
+
+.notice-error { background: var(--danger-soft); color: #B00610; }
+.notice-ok { background: #E3F6E8; color: #17692F; }
+.notice-pink { background: var(--accent-soft); color: #B10057; }
+
+details.menu > summary { list-style: none; cursor: pointer; }
+details.menu > summary::-webkit-details-marker { display: none; }

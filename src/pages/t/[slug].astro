@@ -1,0 +1,181 @@
+---
+import Base from '../../layouts/Base.astro';
+import { tagStyle, timeAgo, initials, avatarGradient, parseDbDate } from '../../lib/format';
+
+const db = Astro.locals.runtime.env.DB;
+const user = Astro.locals.user;
+const { slug } = Astro.params;
+
+const post = await db
+  .prepare(
+    `SELECT p.id, p.tag, p.title, p.slug, p.excerpt, p.body, p.created_at, p.hidden,
+      u.name AS author_name, u.username AS author_username,
+      p.base_votes + (SELECT COUNT(*) FROM votes v WHERE v.post_id = p.id) AS votes,
+      EXISTS(SELECT 1 FROM votes v2 WHERE v2.post_id = p.id AND v2.user_id = ?2) AS voted
+    FROM posts p JOIN users u ON u.id = p.user_id
+    WHERE p.slug = ?1`
+  )
+  .bind(slug, user?.id ?? 0)
+  .first<any>();
+
+if (!post || (post.hidden && user?.role !== 'admin')) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
+const comments = (
+  await db
+    .prepare(
+      `SELECT c.id, c.body, c.created_at, u.name AS author_name
+       FROM comments c JOIN users u ON u.id = c.user_id
+       WHERE c.post_id = ? ORDER BY c.created_at ASC`
+    )
+    .bind(post.id)
+    .all<any>()
+).results;
+
+const error = Astro.url.searchParams.get('greshka');
+const description = (post.excerpt || post.body).slice(0, 160);
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'DiscussionForumPosting',
+    headline: post.title,
+    text: post.body,
+    url: `https://communitylovable.bg/t/${post.slug}`,
+    datePublished: parseDbDate(post.created_at).toISOString(),
+    author: { '@type': 'Person', name: post.author_name },
+    inLanguage: 'bg',
+    interactionStatistic: [
+      { '@type': 'InteractionCounter', interactionType: { '@type': 'LikeAction' }, userInteractionCount: post.votes },
+      { '@type': 'InteractionCounter', interactionType: { '@type': 'CommentAction' }, userInteractionCount: comments.length },
+    ],
+    comment: comments.map((c: any) => ({
+      '@type': 'Comment',
+      text: c.body,
+      dateCreated: parseDbDate(c.created_at).toISOString(),
+      author: { '@type': 'Person', name: c.author_name },
+    })),
+  },
+];
+---
+<Base
+  title={`${post.title} — Българска Lovable Общност`}
+  description={description}
+  canonicalPath={`/t/${post.slug}`}
+  ogType="article"
+  jsonLd={jsonLd}
+>
+  <main>
+    <a href="/" class="back">← Назад към емисията</a>
+
+    <article class="card thread">
+      <div><span class="tag" style={tagStyle(post.tag)}>{post.tag}</span></div>
+      <h1>{post.title}</h1>
+      <div class="meta">
+        <span class="author">{post.author_name}</span>
+        <span>{timeAgo(post.created_at)}</span>
+      </div>
+      <p class="body">{post.body}</p>
+      <div class="actions">
+        <form method="post" action="/api/vote" data-vote>
+          <input type="hidden" name="post_id" value={post.id} />
+          <input type="hidden" name="back" value={`/t/${post.slug}`} />
+          <button type="submit" class:list={['vote-chip', { voted: !!post.voted }]}>
+            ▲ <span data-vote-count>{post.votes}</span>
+          </button>
+        </form>
+        <span class="count">{comments.length} коментара</span>
+      </div>
+    </article>
+
+    <h2 id="komentari">Коментари</h2>
+
+    {comments.map((c: any, i: number) => (
+      <div class="card comment">
+        <div class="avatar c-avatar" style={`background:${avatarGradient(i)}`}>{initials(c.author_name)}</div>
+        <div>
+          <div class="c-head">
+            <span class="c-author">{c.author_name}</span>
+            <span class="c-time">{timeAgo(c.created_at)}</span>
+          </div>
+          <p>{c.body}</p>
+        </div>
+      </div>
+    ))}
+    {comments.length === 0 && <div class="card no-comments">Все още няма коментари — започни дискусията!</div>}
+
+    {error === 'blokiran' && <div class="notice notice-error">Профилът ти е блокиран и не може да коментира.</div>}
+
+    {user ? (
+      <form class="card reply" method="post" action="/api/comments">
+        <input type="hidden" name="post_id" value={post.id} />
+        <input type="hidden" name="slug" value={post.slug} />
+        <input name="body" placeholder="Добави коментар…" maxlength="2000" required autocomplete="off" />
+        <button type="submit" class="btn btn-dark">Изпрати</button>
+      </form>
+    ) : (
+      <div class="notice notice-pink">
+        <a href="/vhod" class="login-link">Влез в профила си</a>, за да се включиш в дискусията.
+      </div>
+    )}
+  </main>
+</Base>
+
+<script>
+  document.querySelectorAll('form[data-vote]').forEach((form) => {
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const f = form as HTMLFormElement;
+      const res = await fetch(f.action, {
+        method: 'POST',
+        body: new FormData(f),
+        headers: { Accept: 'application/json' },
+      });
+      if (res.redirected || res.status === 401) { window.location.href = '/vhod'; return; }
+      if (!res.ok) return;
+      const data = (await res.json()) as { votes: number; voted: boolean };
+      const count = f.querySelector('[data-vote-count]');
+      if (count) count.textContent = String(data.votes);
+      f.querySelector('button')?.classList.toggle('voted', data.voted);
+    });
+  });
+</script>
+
+<style>
+  main {
+    max-width: 760px; margin: 0 auto; padding: 28px 24px;
+    display: flex; flex-direction: column; gap: 16px;
+  }
+  .back {
+    align-self: flex-start; color: var(--muted); font-weight: 700;
+    font-size: 14px; padding: 4px 0;
+  }
+  .back:hover { color: var(--accent); }
+  .thread { border-radius: 18px; padding: 26px; }
+  .thread > div:first-child { margin-bottom: 10px; }
+  h1 { margin: 0 0 10px; font-size: 26px; font-weight: 800; line-height: 1.25; letter-spacing: -0.01em; }
+  .meta { display: flex; gap: 14px; font-size: 13px; color: var(--faint); font-weight: 600; margin-bottom: 16px; }
+  .author { color: var(--ink-body); }
+  .body { margin: 0; font-size: 16px; line-height: 1.65; color: var(--ink-soft); white-space: pre-line; }
+  .actions { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
+  .vote-chip {
+    padding: 8px 16px; border-radius: 99px; cursor: pointer; font-size: 14px; font-weight: 800;
+    border: 1px solid var(--border-input); color: var(--ink-body); background: #fff;
+  }
+  .vote-chip:hover { border-color: var(--accent); }
+  .vote-chip.voted { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .count { font-size: 13px; color: var(--faint); font-weight: 600; }
+  h2 { margin: 8px 0 0; font-size: 16px; font-weight: 800; color: var(--ink-body); }
+  .comment { padding: 16px 18px; display: flex; gap: 14px; }
+  .c-avatar { width: 36px; height: 36px; font-size: 12px; }
+  .c-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+  .c-author { font-weight: 800; font-size: 14px; }
+  .c-time { font-size: 12px; color: var(--faint); font-weight: 600; }
+  .comment p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--ink-soft); }
+  .no-comments { padding: 18px; font-size: 14px; color: var(--faint); font-weight: 600; }
+  .reply { padding: 14px; display: flex; gap: 10px; }
+  .reply input[name="body"] {
+    flex: 1; border: none; outline: none; font-size: 15px; background: none; color: var(--ink);
+  }
+  .login-link { text-decoration: underline; }
+</style>

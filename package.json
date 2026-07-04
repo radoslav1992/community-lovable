@@ -1,0 +1,26 @@
+{
+  "name": "community-lovable",
+  "type": "module",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro build && wrangler dev",
+    "deploy": "astro build && wrangler deploy",
+    "db:migrate:local": "wrangler d1 migrations apply community_lovable --local",
+    "db:migrate:remote": "wrangler d1 migrations apply community_lovable --remote",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^12.5.0",
+    "astro": "^5.7.0"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.9",
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "sharp": "^0.33.0",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.0.0"
+  }
+}
