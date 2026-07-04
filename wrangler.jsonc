@@ -15,9 +15,7 @@
     {
       "binding": "DB",
       "database_name": "community_lovable",
-      // Replace with the real database_id after running:
-      //   wrangler d1 create community_lovable
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "86a0ec07-3c25-4b09-a430-15270d3f2d2a",
       "migrations_dir": "migrations"
     }
   ]
