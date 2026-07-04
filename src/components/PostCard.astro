@@ -10,6 +10,7 @@ interface Props {
     excerpt: string;
     created_at: string;
     author_name: string;
+    author_username: string;
     votes: number;
     comment_count: number;
     voted: number;
@@ -20,7 +21,7 @@ const { post } = Astro.props;
 const url = `/t/${post.slug}`;
 ---
 <article class="card post-card">
-  <div class="vote-col">
+  <div class="vote-col" data-vote-scope>
     <form method="post" action="/api/vote" data-vote>
       <input type="hidden" name="post_id" value={post.id} />
       <input type="hidden" name="back" value={Astro.url.pathname + Astro.url.search} />
@@ -33,12 +34,14 @@ const url = `/t/${post.slug}`;
     <h3><a href={url}>{post.title}</a></h3>
     <p>{post.excerpt}</p>
     <div class="meta">
-      <span class="author">{post.author_name}</span>
+      <a href={`/u/${post.author_username}`} class="author">{post.author_name}</a>
       <span>{timeAgo(post.created_at)}</span>
       <a href={`${url}#komentari`} class="comments">💬 {post.comment_count}</a>
     </div>
   </div>
 </article>
+
+<script src="../scripts/vote.ts"></script>
 
 <style>
   .post-card { padding: 18px 20px; display: flex; gap: 16px; transition: box-shadow 0.15s; }
@@ -56,5 +59,5 @@ const url = `/t/${post.slug}`;
   p { margin: 0; font-size: 15px; color: var(--muted); line-height: 1.5; }
   .meta { display: flex; gap: 14px; font-size: 13px; color: var(--faint); font-weight: 600; margin-top: 2px; }
   .author { color: var(--ink-body); }
-  .comments:hover { color: var(--accent); }
+  .author:hover, .comments:hover { color: var(--accent); }
 </style>

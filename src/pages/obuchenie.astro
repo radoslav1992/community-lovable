@@ -5,7 +5,7 @@ import { LEVEL_STYLES } from '../lib/format';
 const db = Astro.locals.runtime.env.DB;
 
 const [coursesRes, articlesRes] = await db.batch([
-  db.prepare('SELECT level, level_key, title, description, meta FROM courses ORDER BY sort'),
+  db.prepare('SELECT slug, level, level_key, title, description, meta FROM courses ORDER BY sort'),
   db.prepare('SELECT title, meta, url FROM articles ORDER BY sort'),
 ]);
 const courses = coursesRes.results as any[];
@@ -39,10 +39,10 @@ const jsonLd = [
       {courses.map((c: any) => (
         <div class="card course">
           <span class="tag" style={LEVEL_STYLES[c.level_key] ?? LEVEL_STYLES.beginner}>{c.level}</span>
-          <h3>{c.title}</h3>
+          <h3><a href={`/obuchenie/${c.slug}`}>{c.title}</a></h3>
           <p>{c.description}</p>
           <div class="meta">{c.meta}</div>
-          <button type="button" class="btn btn-dark">Започни курса</button>
+          <a href={`/obuchenie/${c.slug}`} class="btn btn-dark">Започни курса</a>
         </div>
       ))}
     </div>
@@ -71,6 +71,7 @@ const jsonLd = [
   .course { border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 10px; }
   .course .tag { align-self: flex-start; letter-spacing: 0.04em; }
   .course h3 { margin: 0; font-size: 19px; font-weight: 800; line-height: 1.3; letter-spacing: -0.01em; }
+  .course h3 a:hover { color: var(--accent); }
   .course p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.5; flex: 1; }
   .course .meta { font-size: 13px; color: var(--faint); font-weight: 700; }
   h2 { font-size: 18px; font-weight: 800; margin: 0 0 14px; }

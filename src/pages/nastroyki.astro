@@ -9,6 +9,8 @@ const error = Astro.url.searchParams.get('greshka');
 const ERRORS: Record<string, string> = {
   'zaet-imeyl': 'Вече има профил с този имейл.',
   'nevalidni-danni': 'Моля, попълни полетата коректно.',
+  'slaba-parola': 'Новата парола трябва да е поне 8 знака.',
+  'greshna-parola': 'Текущата парола е грешна.',
 };
 
 const toggles = [
@@ -46,6 +48,15 @@ const toggles = [
         <label>Имейл<input class="input" type="email" name="email" value={user.email} required /></label>
         <label>Кратко представяне<textarea class="input" name="bio" rows="2" maxlength="300">{user.bio}</textarea></label>
         <button type="submit" class="btn btn-dark">Запази промените</button>
+      </form>
+    </section>
+
+    <section class="card">
+      <h2 class="section-label">ПАРОЛА</h2>
+      <form method="post" action="/api/settings/password" class="profile-form">
+        <label>Текуща парола<input class="input" type="password" name="current_password" autocomplete="current-password" /></label>
+        <label>Нова парола<input class="input" type="password" name="new_password" minlength="8" required autocomplete="new-password" /></label>
+        <button type="submit" class="btn btn-dark">Смени паролата</button>
       </form>
     </section>
 

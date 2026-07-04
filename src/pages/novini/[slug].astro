@@ -1,0 +1,56 @@
+---
+import Base from '../../layouts/Base.astro';
+import { bgDate, parseDbDate } from '../../lib/format';
+
+const db = Astro.locals.runtime.env.DB;
+const { slug } = Astro.params;
+
+const item = await db
+  .prepare('SELECT slug, title, excerpt, body, featured, published_at FROM news WHERE slug = ?')
+  .bind(slug)
+  .first<any>();
+
+if (!item) return new Response(null, { status: 404, statusText: 'Not Found' });
+
+const paragraphs = (item.body || item.excerpt).split(/\n\n+/).filter(Boolean);
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: item.title,
+    description: item.excerpt,
+    articleBody: item.body,
+    datePublished: parseDbDate(item.published_at).toISOString(),
+    inLanguage: 'bg',
+    url: `https://communitylovable.bg/novini/${item.slug}`,
+    publisher: { '@type': 'Organization', name: 'Българска Lovable Общност', url: 'https://communitylovable.bg' },
+  },
+];
+---
+<Base
+  title={`${item.title} — Новини`}
+  description={item.excerpt.slice(0, 160)}
+  canonicalPath={`/novini/${item.slug}`}
+  ogType="article"
+  jsonLd={jsonLd}
+>
+  <main>
+    <a href="/novini" class="back">← Всички новини</a>
+    <article class="card">
+      <div class="date">{bgDate(item.published_at)}{item.featured ? ' · АКЦЕНТ' : ''}</div>
+      <h1>{item.title}</h1>
+      {paragraphs.map((p: string) => <p>{p}</p>)}
+    </article>
+  </main>
+</Base>
+
+<style>
+  main { max-width: 760px; margin: 0 auto; padding: 28px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .back { align-self: flex-start; color: var(--muted); font-weight: 700; font-size: 14px; padding: 4px 0; }
+  .back:hover { color: var(--accent); }
+  article { border-radius: 18px; padding: 28px; }
+  .date { font-size: 13px; color: var(--faint); font-weight: 700; margin-bottom: 8px; }
+  h1 { margin: 0 0 16px; font-size: 26px; font-weight: 900; line-height: 1.25; letter-spacing: -0.01em; }
+  p { margin: 0 0 14px; font-size: 16px; line-height: 1.65; color: var(--ink-soft); }
+  p:last-child { margin-bottom: 0; }
+</style>

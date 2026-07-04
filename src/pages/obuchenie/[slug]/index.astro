@@ -1,0 +1,98 @@
+---
+import Base from '../../../layouts/Base.astro';
+import { LEVEL_STYLES } from '../../../lib/format';
+
+const db = Astro.locals.runtime.env.DB;
+const { slug } = Astro.params;
+
+const course = await db
+  .prepare('SELECT id, slug, level, level_key, title, description, meta FROM courses WHERE slug = ?')
+  .bind(slug)
+  .first<any>();
+
+if (!course) return new Response(null, { status: 404, statusText: 'Not Found' });
+
+const lessons = (
+  await db
+    .prepare('SELECT slug, title, sort FROM lessons WHERE course_id = ? ORDER BY sort')
+    .bind(course.id)
+    .all<any>()
+).results;
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Course',
+    name: course.title,
+    description: course.description,
+    inLanguage: 'bg',
+    url: `https://communitylovable.bg/obuchenie/${course.slug}`,
+    provider: { '@type': 'Organization', name: 'Българска Lovable Общност', url: 'https://communitylovable.bg' },
+    hasCourseInstance: {
+      '@type': 'CourseInstance',
+      courseMode: 'online',
+      courseWorkload: course.meta,
+    },
+    offers: { '@type': 'Offer', price: '0', priceCurrency: 'BGN' },
+  },
+];
+---
+<Base
+  title={`${course.title} — Обучение`}
+  description={course.description.slice(0, 160)}
+  canonicalPath={`/obuchenie/${course.slug}`}
+  jsonLd={jsonLd}
+>
+  <main>
+    <a href="/obuchenie" class="back">← Всички курсове</a>
+    <div class="card head">
+      <span class="tag" style={LEVEL_STYLES[course.level_key] ?? LEVEL_STYLES.beginner}>{course.level}</span>
+      <h1>{course.title}</h1>
+      <p>{course.description}</p>
+      <div class="meta">{course.meta} · безплатен</div>
+      {lessons.length > 0 && (
+        <a href={`/obuchenie/${course.slug}/${lessons[0].slug}`} class="btn btn-dark start">Започни курса</a>
+      )}
+    </div>
+
+    <h2>Уроци</h2>
+    <div class="card lessons">
+      {lessons.map((l: any, i: number) => (
+        <a href={`/obuchenie/${course.slug}/${l.slug}`} class="row">
+          <span class="num">{i + 1}</span>
+          <span class="l-title">{l.title}</span>
+          <span class="arrow">→</span>
+        </a>
+      ))}
+      {lessons.length === 0 && <div class="row empty">Уроците се подготвят.</div>}
+    </div>
+  </main>
+</Base>
+
+<style>
+  main { max-width: 760px; margin: 0 auto; padding: 28px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .back { align-self: flex-start; color: var(--muted); font-weight: 700; font-size: 14px; padding: 4px 0; }
+  .back:hover { color: var(--accent); }
+  .head { border-radius: 18px; padding: 26px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  .head .tag { letter-spacing: 0.04em; }
+  h1 { margin: 0; font-size: 26px; font-weight: 900; line-height: 1.25; letter-spacing: -0.01em; }
+  .head p { margin: 0; font-size: 16px; color: var(--ink-soft); line-height: 1.55; }
+  .meta { font-size: 13px; color: var(--faint); font-weight: 700; }
+  .start { margin-top: 6px; }
+  h2 { margin: 8px 0 0; font-size: 16px; font-weight: 800; color: var(--ink-body); }
+  .lessons { border-radius: 18px; overflow: hidden; padding: 0; }
+  .row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 14px 22px; border-bottom: 1px solid var(--divider);
+  }
+  .row:last-child { border-bottom: none; }
+  .row:hover { background: var(--card-hover); }
+  .num {
+    width: 28px; height: 28px; border-radius: 50%; background: var(--hover-bg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 800; color: var(--muted); flex-shrink: 0;
+  }
+  .l-title { font-weight: 800; font-size: 15px; flex: 1; }
+  .arrow { color: var(--accent); font-weight: 800; }
+  .empty { font-size: 14px; color: var(--faint); font-weight: 600; }
+</style>

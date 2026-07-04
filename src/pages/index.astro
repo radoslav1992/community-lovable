@@ -11,20 +11,24 @@ const activeFilter = filter && TAGS.includes(filter) ? filter : null;
 const composerOpen = Astro.url.searchParams.get('post') === 'new' && !!user;
 const error = Astro.url.searchParams.get('greshka');
 
+const PER_PAGE = 20;
+const page = Math.max(1, parseInt(Astro.url.searchParams.get('stranitsa') ?? '1', 10) || 1);
+const offset = (page - 1) * PER_PAGE;
+
 const postsQuery = `
   SELECT p.id, p.tag, p.title, p.slug, p.excerpt, p.created_at,
-    u.name AS author_name,
+    u.name AS author_name, u.username AS author_username,
     p.base_votes + (SELECT COUNT(*) FROM votes v WHERE v.post_id = p.id) AS votes,
     (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
     EXISTS(SELECT 1 FROM votes v2 WHERE v2.post_id = p.id AND v2.user_id = ?1) AS voted
   FROM posts p JOIN users u ON u.id = p.user_id
-  WHERE p.hidden = 0 ${activeFilter ? 'AND p.tag = ?2' : ''}
+  WHERE p.hidden = 0 ${activeFilter ? 'AND p.tag = ?4' : ''}
   ORDER BY p.created_at DESC
-  LIMIT 50`;
+  LIMIT ?2 OFFSET ?3`;
 
 const stmt = activeFilter
-  ? db.prepare(postsQuery).bind(user?.id ?? 0, activeFilter)
-  : db.prepare(postsQuery).bind(user?.id ?? 0);
+  ? db.prepare(postsQuery).bind(user?.id ?? 0, PER_PAGE + 1, offset, activeFilter)
+  : db.prepare(postsQuery).bind(user?.id ?? 0, PER_PAGE + 1, offset);
 
 const [postsRes, stats, nextEvent] = await Promise.all([
   stmt.all(),
@@ -41,7 +45,18 @@ const [postsRes, stats, nextEvent] = await Promise.all([
     .first<{ title: string; slug: string; starts_at: string; place: string }>(),
 ]);
 
-const posts = postsRes.results as any[];
+const allRows = postsRes.results as any[];
+const hasMore = allRows.length > PER_PAGE;
+const posts = allRows.slice(0, PER_PAGE);
+
+function pageUrl(p: number): string {
+  const params = new URLSearchParams();
+  if (activeFilter) params.set('filtar', activeFilter);
+  if (p > 1) params.set('stranitsa', String(p));
+  const qs = params.toString();
+  return qs ? `/?${qs}` : '/';
+}
+
 const nf = new Intl.NumberFormat('bg-BG');
 const eventDate = nextEvent ? eventDayMonth(nextEvent.starts_at) : null;
 // "📍 betahaus, София · 18:30 – 21:00" → "betahaus · 18:30"
@@ -109,6 +124,13 @@ const jsonLd = [
 
       {posts.map((post) => <PostCard post={post} />)}
       {posts.length === 0 && <div class="card empty">Няма публикации в тази категория — бъди първи!</div>}
+
+      {(page > 1 || hasMore) && (
+        <nav class="pagination" aria-label="Страници">
+          {page > 1 ? <a href={pageUrl(page - 1)} class="btn btn-light">← По-нови</a> : <span></span>}
+          {hasMore && <a href={pageUrl(page + 1)} class="btn btn-light">По-стари →</a>}
+        </nav>
+      )}
     </section>
 
     <aside>
@@ -144,27 +166,6 @@ const jsonLd = [
     </aside>
   </main>
 </Base>
-
-<script>
-  // Progressive enhancement: vote without a full page reload.
-  document.querySelectorAll('form[data-vote]').forEach((form) => {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const f = form as HTMLFormElement;
-      const res = await fetch(f.action, {
-        method: 'POST',
-        body: new FormData(f),
-        headers: { Accept: 'application/json' },
-      });
-      if (res.redirected || res.status === 401) { window.location.href = '/vhod'; return; }
-      if (!res.ok) return;
-      const data = (await res.json()) as { votes: number; voted: boolean };
-      const count = f.parentElement?.querySelector('[data-vote-count]');
-      if (count) count.textContent = String(data.votes);
-      f.querySelector('button')?.classList.toggle('voted', data.voted);
-    });
-  });
-</script>
 
 <style>
   main {
@@ -208,6 +209,7 @@ const jsonLd = [
   }
   .composer-actions { display: flex; gap: 10px; justify-content: flex-end; }
   .empty { padding: 22px; font-size: 14px; color: var(--faint); font-weight: 600; }
+  .pagination { display: flex; justify-content: space-between; gap: 10px; }
 
   aside { flex: 0 1 300px; min-width: 260px; display: flex; flex-direction: column; gap: 16px; }
   .hero {
