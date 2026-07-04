@@ -1,0 +1,71 @@
+---
+import Header from '../components/Header.astro';
+import Footer from '../components/Footer.astro';
+import '../styles/global.css';
+
+interface Props {
+  title: string;
+  description: string;
+  /** Path for canonical URL; defaults to current path. */
+  canonicalPath?: string;
+  ogType?: string;
+  ogImage?: string;
+  /** Serialized JSON-LD structured data blocks. */
+  jsonLd?: object[];
+  noindex?: boolean;
+}
+
+const {
+  title,
+  description,
+  canonicalPath,
+  ogType = 'website',
+  ogImage = '/assets/og-color.png',
+  jsonLd = [],
+  noindex = false,
+} = Astro.props;
+
+const site = Astro.site ?? new URL('https://communitylovable.bg');
+const canonical = new URL(canonicalPath ?? Astro.url.pathname, site).href;
+const ogImageUrl = new URL(ogImage, site).href;
+
+// Only edge-cache fully public pages (guests, no flash-message params).
+if (!Astro.locals.user && !noindex && Astro.url.search === '') {
+  Astro.response.headers.set('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
+} else {
+  Astro.response.headers.set('Cache-Control', 'private, no-store');
+}
+---
+<!doctype html>
+<html lang="bg">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preload" href="/fonts/CameraPlain.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="alternate" type="application/rss+xml" title="Българска Lovable Общност" href="/rss.xml" />
+    {noindex && <meta name="robots" content="noindex, nofollow" />}
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:locale" content="bg_BG" />
+    <meta property="og:site_name" content="Българска Lovable Общност" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+    {jsonLd.map((block) => (
+      <script type="application/ld+json" set:html={JSON.stringify(block)} />
+    ))}
+  </head>
+  <body>
+    <Header />
+    <slot />
+    <Footer />
+  </body>
+</html>

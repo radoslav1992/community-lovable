@@ -1,0 +1,27 @@
+---
+const year = new Date().getFullYear();
+---
+<footer>
+  <img src="/assets/logo-black.png" alt="Lovable" />
+  <span>© {year} Българска Lovable Общност · communitylovable.bg</span>
+  <span class="spacer"></span>
+  <span>Неофициална общност, водена от доброволци</span>
+</footer>
+
+<style>
+  footer {
+    max-width: 1240px;
+    margin: 40px auto 0;
+    padding: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--faint);
+    font-weight: 600;
+    align-items: center;
+  }
+  footer img { height: 16px; object-fit: contain; opacity: 0.5; }
+  .spacer { flex: 1; }
+</style>

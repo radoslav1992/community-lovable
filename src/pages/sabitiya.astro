@@ -1,0 +1,94 @@
+---
+import Base from '../layouts/Base.astro';
+import { eventDayMonth, parseDbDate } from '../lib/format';
+
+const db = Astro.locals.runtime.env.DB;
+const user = Astro.locals.user;
+
+const events = (
+  await db
+    .prepare(
+      `SELECT e.id, e.slug, e.title, e.starts_at, e.is_live, e.place, e.description,
+        EXISTS(SELECT 1 FROM rsvps r WHERE r.event_id = e.id AND r.user_id = ?) AS going
+      FROM events e
+      WHERE e.starts_at > datetime('now', '-1 day')
+      ORDER BY e.starts_at ASC`
+    )
+    .bind(user?.id ?? 0)
+    .all<any>()
+).results;
+
+const description = 'Срещи, уъркшопи и хакатони на българската Lovable общност — на живо и онлайн.';
+const jsonLd = events.map((ev: any) => ({
+  '@context': 'https://schema.org',
+  '@type': 'Event',
+  name: ev.title,
+  startDate: parseDbDate(ev.starts_at).toISOString(),
+  description: ev.description,
+  eventAttendanceMode: ev.is_live
+    ? 'https://schema.org/OfflineEventAttendanceMode'
+    : 'https://schema.org/OnlineEventAttendanceMode',
+  location: ev.is_live
+    ? { '@type': 'Place', name: ev.place.replace(/^[^\p{L}\d]+/u, '') }
+    : { '@type': 'VirtualLocation', url: 'https://communitylovable.bg/sabitiya' },
+  organizer: { '@type': 'Organization', name: 'Българска Lovable Общност', url: 'https://communitylovable.bg' },
+  inLanguage: 'bg',
+}));
+---
+<Base title="Събития — Българска Lovable Общност" description={description} canonicalPath="/sabitiya" jsonLd={jsonLd}>
+  <main>
+    <h1 class="page-title">Събития</h1>
+    <p class="page-sub">Срещи, уъркшопи и хакатони на българската Lovable общност.</p>
+    <div class="list">
+      {events.map((ev: any) => {
+        const d = eventDayMonth(ev.starts_at);
+        return (
+          <div class="card event">
+            <div class="date-chip">
+              <div class="day">{d.day.replace(/^0/, '')}</div>
+              <div class="month">{d.month}</div>
+            </div>
+            <div class="info">
+              <div class="head">
+                <h3>{ev.title}</h3>
+                <span class:list={['badge', ev.is_live ? 'live' : 'online']}>{ev.is_live ? 'НА ЖИВО' : 'ОНЛАЙН'}</span>
+              </div>
+              <div class="place">{ev.place}</div>
+              <p>{ev.description}</p>
+            </div>
+            <form method="post" action="/api/rsvp">
+              <input type="hidden" name="event_id" value={ev.id} />
+              <button type="submit" class:list={['btn', ev.going ? 'btn-accent' : 'btn-outline']}>
+                {ev.going ? '✓ Записан' : 'Ще дойда'}
+              </button>
+            </form>
+          </div>
+        );
+      })}
+      {events.length === 0 && <div class="card empty">Няма предстоящи събития — следи този раздел.</div>}
+    </div>
+  </main>
+</Base>
+
+<style>
+  main { max-width: 860px; margin: 0 auto; padding: 32px 24px; }
+  .list { display: flex; flex-direction: column; gap: 16px; }
+  .event { border-radius: 18px; padding: 24px; display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+  .date-chip {
+    width: 68px; border-radius: 14px; background: var(--grad-hot);
+    color: #fff; text-align: center; padding: 12px 0; flex-shrink: 0;
+  }
+  .date-chip .day { font-size: 28px; font-weight: 800; line-height: 1; }
+  .date-chip .month { font-size: 12px; font-weight: 700; }
+  .info { flex: 1; min-width: 240px; }
+  .head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+  h3 { margin: 0; font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
+  .badge { font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 99px; white-space: nowrap; }
+  .badge.live { background: #FFE4D3; color: #C24E00; }
+  .badge.online { background: #E3E6FF; color: #3D53D6; }
+  .place { font-size: 14px; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+  .info p { margin: 0; font-size: 15px; color: var(--ink-soft); line-height: 1.55; }
+  .event form { flex-shrink: 0; }
+  .event .btn { padding: 10px 20px; }
+  .empty { padding: 22px; font-size: 14px; color: var(--faint); font-weight: 600; }
+</style>

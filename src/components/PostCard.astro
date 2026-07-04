@@ -1,0 +1,60 @@
+---
+import { tagStyle, timeAgo } from '../lib/format';
+
+interface Props {
+  post: {
+    id: number;
+    tag: string;
+    title: string;
+    slug: string;
+    excerpt: string;
+    created_at: string;
+    author_name: string;
+    votes: number;
+    comment_count: number;
+    voted: number;
+  };
+}
+
+const { post } = Astro.props;
+const url = `/t/${post.slug}`;
+---
+<article class="card post-card">
+  <div class="vote-col">
+    <form method="post" action="/api/vote" data-vote>
+      <input type="hidden" name="post_id" value={post.id} />
+      <input type="hidden" name="back" value={Astro.url.pathname + Astro.url.search} />
+      <button type="submit" class:list={['vote-btn', { voted: !!post.voted }]} aria-label="Гласувай">▲</button>
+    </form>
+    <span class="vote-count" data-vote-count>{post.votes}</span>
+  </div>
+  <div class="post-main">
+    <div><span class="tag" style={tagStyle(post.tag)}>{post.tag}</span></div>
+    <h3><a href={url}>{post.title}</a></h3>
+    <p>{post.excerpt}</p>
+    <div class="meta">
+      <span class="author">{post.author_name}</span>
+      <span>{timeAgo(post.created_at)}</span>
+      <a href={`${url}#komentari`} class="comments">💬 {post.comment_count}</a>
+    </div>
+  </div>
+</article>
+
+<style>
+  .post-card { padding: 18px 20px; display: flex; gap: 16px; transition: box-shadow 0.15s; }
+  .post-card:hover { box-shadow: 0 4px 16px rgba(27, 27, 27, 0.06); }
+  .vote-col { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; width: 36px; }
+  .vote-btn {
+    border: none; background: none; font-size: 16px; cursor: pointer;
+    padding: 2px; line-height: 1; color: var(--faint);
+  }
+  .vote-btn:hover, .vote-btn.voted { color: var(--accent); }
+  .vote-count { font-weight: 800; font-size: 15px; }
+  .post-main { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 6px; }
+  h3 { margin: 0; font-size: 18px; font-weight: 800; line-height: 1.3; letter-spacing: -0.01em; }
+  h3 a:hover { color: var(--accent); }
+  p { margin: 0; font-size: 15px; color: var(--muted); line-height: 1.5; }
+  .meta { display: flex; gap: 14px; font-size: 13px; color: var(--faint); font-weight: 600; margin-top: 2px; }
+  .author { color: var(--ink-body); }
+  .comments:hover { color: var(--accent); }
+</style>
