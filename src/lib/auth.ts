@@ -88,6 +88,16 @@ export async function deleteSession(db: D1Database, token: string): Promise<void
   await db.prepare('DELETE FROM sessions WHERE token = ?').bind(token).run();
 }
 
+/** Derives a unique latin username from a display name. */
+export async function uniqueUsername(db: D1Database, base: string): Promise<string> {
+  let username = base || 'user';
+  for (let i = 2; ; i++) {
+    const taken = await db.prepare('SELECT 1 FROM users WHERE username = ?').bind(username).first();
+    if (!taken) return username;
+    username = `${base}${i}`;
+  }
+}
+
 export function setSessionCookie(cookies: AstroCookies, token: string, expires: Date): void {
   cookies.set(SESSION_COOKIE, token, {
     path: '/',

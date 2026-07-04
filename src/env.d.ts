@@ -4,6 +4,10 @@
 type Env = {
   DB: D1Database;
   ASSETS: Fetcher;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
 };
 
 type Runtime = import('@astrojs/cloudflare').Runtime<Env>;

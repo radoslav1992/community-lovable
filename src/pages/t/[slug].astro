@@ -25,7 +25,7 @@ if (!post || (post.hidden && user?.role !== 'admin')) {
 const comments = (
   await db
     .prepare(
-      `SELECT c.id, c.body, c.created_at, u.name AS author_name
+      `SELECT c.id, c.body, c.created_at, u.name AS author_name, u.username AS author_username
        FROM comments c JOIN users u ON u.id = c.user_id
        WHERE c.post_id = ? ORDER BY c.created_at ASC`
     )
@@ -34,6 +34,8 @@ const comments = (
 ).results;
 
 const error = Astro.url.searchParams.get('greshka');
+const reported = Astro.url.searchParams.get('dokladvano') === '1';
+const REPORT_REASONS = ['Спам / реклама', 'Неуважително отношение', 'Подвеждащо съдържание', 'Друго'];
 const description = (post.excerpt || post.body).slice(0, 160);
 const jsonLd = [
   {
@@ -72,11 +74,11 @@ const jsonLd = [
       <div><span class="tag" style={tagStyle(post.tag)}>{post.tag}</span></div>
       <h1>{post.title}</h1>
       <div class="meta">
-        <span class="author">{post.author_name}</span>
+        <a href={`/u/${post.author_username}`} class="author">{post.author_name}</a>
         <span>{timeAgo(post.created_at)}</span>
       </div>
       <p class="body">{post.body}</p>
-      <div class="actions">
+      <div class="actions" data-vote-scope>
         <form method="post" action="/api/vote" data-vote>
           <input type="hidden" name="post_id" value={post.id} />
           <input type="hidden" name="back" value={`/t/${post.slug}`} />
@@ -85,7 +87,21 @@ const jsonLd = [
           </button>
         </form>
         <span class="count">{comments.length} коментара</span>
+        <span class="flex-spacer"></span>
+        {user && (
+          <details class="report menu">
+            <summary>⚑ Докладвай</summary>
+            <form method="post" action="/api/report" class="report-form">
+              <input type="hidden" name="post_id" value={post.id} />
+              <select name="reason" class="input report-select">
+                {REPORT_REASONS.map((r) => <option value={r}>{r}</option>)}
+              </select>
+              <button type="submit" class="btn btn-danger-outline report-submit">Изпрати доклад</button>
+            </form>
+          </details>
+        )}
       </div>
+      {reported && <div class="notice notice-ok reported">Благодарим — докладът е изпратен към модераторите.</div>}
     </article>
 
     <h2 id="komentari">Коментари</h2>
@@ -95,7 +111,7 @@ const jsonLd = [
         <div class="avatar c-avatar" style={`background:${avatarGradient(i)}`}>{initials(c.author_name)}</div>
         <div>
           <div class="c-head">
-            <span class="c-author">{c.author_name}</span>
+            <a href={`/u/${c.author_username}`} class="c-author">{c.author_name}</a>
             <span class="c-time">{timeAgo(c.created_at)}</span>
           </div>
           <p>{c.body}</p>
@@ -121,25 +137,7 @@ const jsonLd = [
   </main>
 </Base>
 
-<script>
-  document.querySelectorAll('form[data-vote]').forEach((form) => {
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const f = form as HTMLFormElement;
-      const res = await fetch(f.action, {
-        method: 'POST',
-        body: new FormData(f),
-        headers: { Accept: 'application/json' },
-      });
-      if (res.redirected || res.status === 401) { window.location.href = '/vhod'; return; }
-      if (!res.ok) return;
-      const data = (await res.json()) as { votes: number; voted: boolean };
-      const count = f.querySelector('[data-vote-count]');
-      if (count) count.textContent = String(data.votes);
-      f.querySelector('button')?.classList.toggle('voted', data.voted);
-    });
-  });
-</script>
+<script src="../../scripts/vote.ts"></script>
 
 <style>
   main {
@@ -156,6 +154,7 @@ const jsonLd = [
   h1 { margin: 0 0 10px; font-size: 26px; font-weight: 800; line-height: 1.25; letter-spacing: -0.01em; }
   .meta { display: flex; gap: 14px; font-size: 13px; color: var(--faint); font-weight: 600; margin-bottom: 16px; }
   .author { color: var(--ink-body); }
+  .author:hover { color: var(--accent); }
   .body { margin: 0; font-size: 16px; line-height: 1.65; color: var(--ink-soft); white-space: pre-line; }
   .actions { display: flex; gap: 10px; margin-top: 20px; align-items: center; }
   .vote-chip {
@@ -165,11 +164,27 @@ const jsonLd = [
   .vote-chip:hover { border-color: var(--accent); }
   .vote-chip.voted { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
   .count { font-size: 13px; color: var(--faint); font-weight: 600; }
+  .flex-spacer { flex: 1; }
+  .report { position: relative; }
+  .report > summary {
+    font-size: 13px; color: var(--faint); font-weight: 700; padding: 4px 0;
+  }
+  .report > summary:hover { color: var(--danger); }
+  .report-form {
+    position: absolute; right: 0; top: 30px; z-index: 10; width: 240px;
+    background: #fff; border: 1px solid var(--border); border-radius: 14px;
+    box-shadow: 0 12px 32px rgba(27, 27, 27, 0.12); padding: 12px;
+    display: flex; flex-direction: column; gap: 10px; animation: fadeUp 0.15s ease;
+  }
+  .report-select { font-size: 14px; padding: 9px 12px; }
+  .report-submit { font-size: 13px; padding: 8px; }
+  .reported { margin-top: 14px; }
   h2 { margin: 8px 0 0; font-size: 16px; font-weight: 800; color: var(--ink-body); }
   .comment { padding: 16px 18px; display: flex; gap: 14px; }
   .c-avatar { width: 36px; height: 36px; font-size: 12px; }
   .c-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
   .c-author { font-weight: 800; font-size: 14px; }
+  .c-author:hover { color: var(--accent); }
   .c-time { font-size: 12px; color: var(--faint); font-weight: 600; }
   .comment p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--ink-soft); }
   .no-comments { padding: 18px; font-size: 14px; color: var(--faint); font-weight: 600; }

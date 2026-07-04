@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { hashPassword, createSession, setSessionCookie } from '../../../lib/auth';
+import { hashPassword, createSession, setSessionCookie, uniqueUsername } from '../../../lib/auth';
 import { slugify } from '../../../lib/slug';
 
 export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => {
@@ -18,14 +18,7 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
   const existing = await db.prepare('SELECT id FROM users WHERE email = ?').bind(email).first();
   if (existing) return back('zaet-imeyl');
 
-  // Derive a unique latin username from the name.
-  const base = slugify(name, 30).replace(/-/g, '') || 'user';
-  let username = base;
-  for (let i = 2; ; i++) {
-    const taken = await db.prepare('SELECT 1 FROM users WHERE username = ?').bind(username).first();
-    if (!taken) break;
-    username = `${base}${i}`;
-  }
+  const username = await uniqueUsername(db, slugify(name, 30).replace(/-/g, ''));
 
   const passwordHash = await hashPassword(password);
   const result = await db

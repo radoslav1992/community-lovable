@@ -24,7 +24,7 @@ const jsonLd = [
         description: n.excerpt,
         datePublished: parseDbDate(n.published_at).toISOString(),
         inLanguage: 'bg',
-        url: `https://communitylovable.bg/novini#${n.slug}`,
+        url: `https://communitylovable.bg/novini/${n.slug}`,
       },
     })),
   },
@@ -42,14 +42,14 @@ const jsonLd = [
             <div class="overlay"></div>
             <div class="content">
               <div class="date">{bgDate(n.published_at)} · АКЦЕНТ</div>
-              <h3>{n.title}</h3>
+              <h3><a href={`/novini/${n.slug}`}>{n.title}</a></h3>
               <p>{n.excerpt}</p>
             </div>
           </article>
         ) : (
           <article class="card plain" id={n.slug}>
             <div class="date">{bgDate(n.published_at)}</div>
-            <h3>{n.title}</h3>
+            <h3><a href={`/novini/${n.slug}`}>{n.title}</a></h3>
             <p>{n.excerpt}</p>
           </article>
         )
@@ -67,10 +67,11 @@ const jsonLd = [
   .content { position: relative; }
   .featured .date { font-size: 13px; font-weight: 700; margin-bottom: 8px; opacity: 0.85; }
   .featured h3 { margin: 0 0 8px; font-size: 24px; font-weight: 900; letter-spacing: -0.01em; }
+  .featured h3 a:hover { text-decoration: underline; }
   .featured p { margin: 0; font-size: 15px; line-height: 1.55; max-width: 560px; }
   .plain { border-radius: 18px; padding: 24px; }
   .plain .date { font-size: 13px; color: var(--faint); font-weight: 700; margin-bottom: 8px; }
   .plain h3 { margin: 0 0 8px; font-size: 20px; font-weight: 800; letter-spacing: -0.01em; }
-  .plain h3:hover { color: var(--accent); }
+  .plain h3 a:hover { color: var(--accent); }
   .plain p { margin: 0; font-size: 15px; color: var(--muted); line-height: 1.55; }
 </style>

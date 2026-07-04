@@ -1,0 +1,114 @@
+---
+import Base from '../../layouts/Base.astro';
+import { initials, memberSince, timeAgo, avatarGradient, ROLE_LABELS } from '../../lib/format';
+
+const db = Astro.locals.runtime.env.DB;
+const viewer = Astro.locals.user;
+const { username } = Astro.params;
+
+const person = await db
+  .prepare(
+    `SELECT id, username, name, bio, role, blocked, public_profile, created_at
+     FROM users WHERE username = ?`
+  )
+  .bind(username)
+  .first<any>();
+
+if (!person || person.blocked) return new Response(null, { status: 404, statusText: 'Not Found' });
+
+const visible = !!person.public_profile || !!viewer;
+
+const [statsRes, postsRes] = visible
+  ? await db.batch([
+      db
+        .prepare(
+          `SELECT
+            (SELECT COUNT(*) FROM posts WHERE user_id = ?1 AND hidden = 0) AS post_count,
+            (SELECT COUNT(*) FROM comments c JOIN posts p ON p.id = c.post_id WHERE c.user_id = ?1 AND p.hidden = 0) AS comment_count,
+            (SELECT COALESCE(SUM(base_votes), 0) FROM posts WHERE user_id = ?1 AND hidden = 0)
+              + (SELECT COUNT(*) FROM votes v JOIN posts p ON p.id = v.post_id WHERE p.user_id = ?1 AND p.hidden = 0) AS points`
+        )
+        .bind(person.id),
+      db
+        .prepare(
+          `SELECT title, slug, created_at FROM posts
+           WHERE user_id = ? AND hidden = 0 ORDER BY created_at DESC LIMIT 10`
+        )
+        .bind(person.id),
+    ])
+  : [null, null];
+
+const stats = (statsRes?.results as any[])?.[0] ?? { post_count: 0, comment_count: 0, points: 0 };
+const posts = (postsRes?.results as any[]) ?? [];
+---
+<Base
+  title={`${person.name} (@${person.username}) — Българска Lovable Общност`}
+  description={person.bio || `Профил на ${person.name} в Българската Lovable Общност.`}
+  canonicalPath={`/u/${person.username}`}
+  noindex={!person.public_profile}
+>
+  <main>
+    <div class="card head">
+      <div class="avatar big" style={`background:${avatarGradient(person.id)}`}>{initials(person.name)}</div>
+      <div class="who">
+        <h1>{person.name}</h1>
+        <div class="meta">
+          @{person.username} · {memberSince(person.created_at)}
+          {person.role !== 'member' && <> · <span class="role">{ROLE_LABELS[person.role]}</span></>}
+        </div>
+        {visible && person.bio && <div class="bio">{person.bio}</div>}
+      </div>
+      {visible && (
+        <div class="stats">
+          <div><div class="num">{stats.post_count}</div><div class="lbl">публикации</div></div>
+          <div><div class="num">{stats.comment_count}</div><div class="lbl">коментара</div></div>
+          <div><div class="num">{stats.points}</div><div class="lbl">точки</div></div>
+        </div>
+      )}
+    </div>
+
+    {!visible && (
+      <div class="notice notice-pink">
+        Този профил е видим само за членове. <a href="/vhod" class="login-link">Влез</a>, за да го разгледаш.
+      </div>
+    )}
+
+    {visible && (
+      <>
+        <h2>Публикации</h2>
+        <div class="card activity">
+          {posts.map((p: any) => (
+            <a href={`/t/${p.slug}`} class="row">
+              <div class="kind">ПУБЛИКАЦИЯ · {timeAgo(p.created_at)}</div>
+              <div class="title">{p.title}</div>
+            </a>
+          ))}
+          {posts.length === 0 && <div class="row empty">Още няма публикации.</div>}
+        </div>
+      </>
+    )}
+  </main>
+</Base>
+
+<style>
+  main { max-width: 760px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .head { border-radius: 20px; padding: 28px; display: flex; gap: 22px; align-items: center; flex-wrap: wrap; }
+  .big { width: 76px; height: 76px; font-size: 26px; }
+  .who { flex: 1; min-width: 200px; }
+  h1 { margin: 0; font-size: 24px; font-weight: 900; letter-spacing: -0.01em; }
+  .meta { font-size: 14px; color: var(--muted); font-weight: 600; }
+  .role { color: var(--accent); font-weight: 800; }
+  .bio { font-size: 14px; color: var(--ink-soft); margin-top: 6px; }
+  .stats { display: flex; gap: 24px; text-align: center; }
+  .num { font-weight: 800; font-size: 20px; }
+  .lbl { font-size: 12px; color: var(--faint); font-weight: 700; }
+  h2 { margin: 8px 0 0; font-size: 16px; font-weight: 800; color: var(--ink-body); }
+  .activity { border-radius: 18px; overflow: hidden; padding: 0; }
+  .row { display: block; padding: 16px 22px; border-bottom: 1px solid var(--divider); }
+  .row:last-child { border-bottom: none; }
+  .row:hover { background: var(--card-hover); }
+  .kind { font-size: 12px; color: var(--faint); font-weight: 700; margin-bottom: 2px; }
+  .title { font-weight: 800; font-size: 15px; }
+  .empty { font-size: 14px; color: var(--faint); font-weight: 600; }
+  .login-link { text-decoration: underline; }
+</style>

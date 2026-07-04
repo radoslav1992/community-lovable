@@ -43,6 +43,7 @@ const activity = activityRes.results as any[];
           {user.role !== 'member' && <> · <span class="role">{ROLE_LABELS[user.role]}</span></>}
         </div>
         {user.bio && <div class="bio">{user.bio}</div>}
+        <a href={`/u/${user.username}`} class="public-link">Виж публичния си профил →</a>
       </div>
       <div class="stats">
         <div><div class="num">{stats.post_count}</div><div class="lbl">публикации</div></div>
@@ -75,6 +76,7 @@ const activity = activityRes.results as any[];
   .meta { font-size: 14px; color: var(--muted); font-weight: 600; }
   .role { color: var(--accent); font-weight: 800; }
   .bio { font-size: 14px; color: var(--ink-soft); margin-top: 6px; }
+  .public-link { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 700; color: var(--accent); }
   .stats { display: flex; gap: 24px; text-align: center; }
   .num { font-weight: 800; font-size: 20px; }
   .lbl { font-size: 12px; color: var(--faint); font-weight: 700; }
