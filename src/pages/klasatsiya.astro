@@ -1,7 +1,10 @@
 ---
 import Base from '../layouts/Base.astro';
 import LovableBadge from '../components/LovableBadge.astro';
+import { LOVABLE_TIERS } from '../lib/lovable';
 import { initials, avatarGradient } from '../lib/format';
+
+const tierLegend = [...LOVABLE_TIERS].reverse();
 
 const db = Astro.locals.runtime.env.DB;
 
@@ -30,6 +33,14 @@ const description =
       Свържи своя профил от <a href="/nastroyki">настройките</a>, за да се включиш.
     </p>
 
+    <div class="tiers">
+      {tierLegend.map((t) => (
+        <span class="tier-chip" style={t.style}>
+          {t.label} {t.min > 0 ? `${t.min.toLocaleString('bg-BG')}+` : '0+'}
+        </span>
+      ))}
+    </div>
+
     <div class="card board">
       {members.map((m: any) => (
         <a href={`/u/${m.username}`} class="row">
@@ -49,7 +60,7 @@ const description =
               </>
             )}
           </div>
-          <LovableBadge verified={true} rank={m.lovable_edits === null ? null : m.rank} />
+          <LovableBadge verified={true} rank={m.lovable_edits === null ? null : m.rank} edits={m.lovable_edits} />
         </a>
       ))}
       {members.length === 0 && (
@@ -66,6 +77,8 @@ const description =
   h1 { font-size: 28px; font-weight: 900; margin: 0; letter-spacing: -0.02em; }
   .page-sub { margin: 0; font-size: 15px; color: var(--muted); }
   .page-sub a { text-decoration: underline; }
+  .tiers { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tier-chip { border-radius: 99px; padding: 4px 12px; font-size: 12px; font-weight: 800; white-space: nowrap; }
   .board { border-radius: 18px; overflow: hidden; padding: 0; }
   .row {
     display: flex; align-items: center; gap: 14px; padding: 14px 20px;

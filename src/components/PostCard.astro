@@ -14,6 +14,7 @@ interface Props {
     author_username: string;
     author_lovable?: number;
     author_lovable_rank?: number | null;
+    author_lovable_edits?: number | null;
     votes: number;
     comment_count: number;
     voted: number;
@@ -38,7 +39,7 @@ const url = `/t/${post.slug}`;
     <p>{post.excerpt}</p>
     <div class="meta">
       <a href={`/u/${post.author_username}`} class="author">{post.author_name}</a>
-      <LovableBadge verified={post.author_lovable ?? 0} rank={post.author_lovable_rank} />
+      <LovableBadge verified={post.author_lovable ?? 0} rank={post.author_lovable_rank} edits={post.author_lovable_edits} />
       <span>{timeAgo(post.created_at)}</span>
       <a href={`${url}#komentari`} class="comments">💬 {post.comment_count}</a>
     </div>

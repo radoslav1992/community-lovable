@@ -1,20 +1,19 @@
 ---
+import { lovableTier } from '../lib/lovable';
+
 interface Props {
   verified: boolean | number;
   rank?: number | null;
+  edits?: number | null;
   size?: 'sm' | 'md';
 }
 
-const { verified, rank = null, size = 'sm' } = Astro.props;
-const label = rank ? `Lovable №${rank}` : 'Lovable билдър';
-const style =
-  rank && rank <= 3
-    ? 'background:#FFECC9;color:#A66300'
-    : rank
-      ? 'background:#FFE0F1;color:#C4005D'
-      : 'background:#FFE4D3;color:#C24E00';
-const title = rank
-  ? `№${rank} в класацията на общността по редакции в Lovable`
+const { verified, rank = null, edits = null, size = 'sm' } = Astro.props;
+const tier = lovableTier(edits);
+const label = tier ? `${tier.label}${rank ? ` №${rank}` : ''}` : 'Lovable билдър';
+const style = tier ? tier.style : 'background:#FFE4D3;color:#C24E00';
+const title = tier
+  ? `Lovable ${tier.label}${rank ? ` · №${rank} в класацията на общността` : ''} (${edits!.toLocaleString('bg-BG')} редакции за последната година)`
   : 'Потвърден Lovable профил';
 ---
 {!!verified && (

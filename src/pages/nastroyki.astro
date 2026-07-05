@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import LovableBadge from '../components/LovableBadge.astro';
-import { lovableRank } from '../lib/lovable';
+import { lovableRank, lovableTier, nextLovableTier } from '../lib/lovable';
 import { bgDate } from '../lib/format';
 
 const user = Astro.locals.user;
@@ -9,6 +9,8 @@ if (!user) return Astro.redirect('/vhod');
 
 const db = Astro.locals.runtime.env.DB;
 const myRank = user.lovable_profile_url ? await lovableRank(db, user) : null;
+const myTier = lovableTier(user.lovable_edits);
+const myNextTier = nextLovableTier(user.lovable_edits);
 const claim = user.lovable_profile_url
   ? null
   : await db
@@ -116,7 +118,7 @@ const toggles = [
       {user.lovable_profile_url ? (
         <div class="lv-current">
           <div class="lv-row">
-            <LovableBadge verified={true} rank={myRank} size="md" />
+            <LovableBadge verified={true} rank={myRank} edits={user.lovable_edits} size="md" />
             <div class="lv-info">
               Свързан с <a href={user.lovable_profile_url} target="_blank" rel="noopener nofollow">@{user.lovable_username}</a> ·
               синхронизира се автоматично{user.lovable_synced_at && ` · обновено на ${bgDate(user.lovable_synced_at)}`}
@@ -125,8 +127,10 @@ const toggles = [
           <ul class="lv-badges">
             {user.lovable_edits !== null ? (
               <li>
+                {myTier && <>Ниво <strong>{myTier.label}</strong> · </>}
                 {user.lovable_edits.toLocaleString('bg-BG')} редакции за последната година
                 {myRank && <> · <a href="/klasatsiya">№{myRank} в класацията</a></>}
+                {myNextTier && <> · още {(myNextTier.min - user.lovable_edits).toLocaleString('bg-BG')} редакции до {myNextTier.label}</>}
               </li>
             ) : (
               <li>Все още няма данни за редакции — пробвай „Обнови сега“.</li>

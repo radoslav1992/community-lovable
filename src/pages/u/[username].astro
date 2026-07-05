@@ -59,7 +59,7 @@ const posts = (postsRes?.results as any[]) ?? [];
     <div class="card head">
       <div class="avatar big" style={`background:${avatarGradient(person.id)}`}>{initials(person.name)}</div>
       <div class="who">
-        <h1>{person.name} <LovableBadge verified={!!person.lovable_profile_url} rank={personRank} size="md" /></h1>
+        <h1>{person.name} <LovableBadge verified={!!person.lovable_profile_url} rank={personRank} edits={person.lovable_edits} size="md" /></h1>
         <div class="meta">
           @{person.username} · {memberSince(person.created_at)}
           {person.role !== 'member' && <> · <span class="role">{ROLE_LABELS[person.role]}</span></>}

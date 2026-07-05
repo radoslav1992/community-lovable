@@ -128,13 +128,41 @@ export async function resyncBadges(db: D1Database, userId: number, profileUrl: s
   }
 }
 
+export interface LovableTier {
+  key: string;
+  label: string;
+  min: number;
+  style: string;
+}
+
+/** Community tiers by yearly Lovable edits, ordered highest first. */
+export const LOVABLE_TIERS: LovableTier[] = [
+  { key: 'diamond', label: 'Диамант', min: 10_000, style: 'background:#E3E6FF;color:#3D53D6' },
+  { key: 'platinum', label: 'Платина', min: 5_000, style: 'background:#DFF3F0;color:#0E7A6E' },
+  { key: 'gold', label: 'Злато', min: 2_000, style: 'background:#FFECC9;color:#A66300' },
+  { key: 'silver', label: 'Сребро', min: 500, style: 'background:#E8E8EC;color:#5C6270' },
+  { key: 'bronze', label: 'Бронз', min: 0, style: 'background:#F1E0CC;color:#8A5A20' },
+];
+
+export function lovableTier(edits: number | null | undefined): LovableTier | null {
+  if (edits === null || edits === undefined) return null;
+  return LOVABLE_TIERS.find((t) => edits >= t.min) ?? null;
+}
+
+/** The tier above the current one, or null when already at Diamond. */
+export function nextLovableTier(edits: number | null | undefined): LovableTier | null {
+  if (edits === null || edits === undefined) return null;
+  return [...LOVABLE_TIERS].reverse().find((t) => t.min > edits) ?? null;
+}
+
 /**
  * SQL fragment for author queries joining `users u`: whether the author has a
- * verified Lovable profile, and their community rank by yearly edits (1 =
- * most edits among verified members; NULL when unverified or edits unknown).
+ * verified Lovable profile, their yearly edits, and their community rank
+ * (1 = most edits among verified members; NULL when unverified or unknown).
  */
 export const AUTHOR_LOVABLE_SQL = `
   u.lovable_profile_url IS NOT NULL AS author_lovable,
+  u.lovable_edits AS author_lovable_edits,
   CASE WHEN u.lovable_profile_url IS NULL OR u.lovable_edits IS NULL THEN NULL ELSE
     (SELECT COUNT(*) + 1 FROM users ur
      WHERE ur.lovable_profile_url IS NOT NULL AND ur.lovable_edits > u.lovable_edits)
