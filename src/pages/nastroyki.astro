@@ -1,16 +1,35 @@
 ---
 import Base from '../layouts/Base.astro';
+import LovableBadge from '../components/LovableBadge.astro';
+import { LOVABLE_LEVELS } from '../lib/lovable';
+import { emailConfigured } from '../lib/email';
+import { bgDate } from '../lib/format';
 
 const user = Astro.locals.user;
 if (!user) return Astro.redirect('/vhod');
 
 const saved = Astro.url.searchParams.get('zapazeno') === '1';
 const error = Astro.url.searchParams.get('greshka');
+const lovable = Astro.url.searchParams.get('lovable');
+const emailFlow = emailConfigured(Astro.locals.runtime.env);
 const ERRORS: Record<string, string> = {
   'zaet-imeyl': 'Вече има профил с този имейл.',
   'nevalidni-danni': 'Моля, попълни полетата коректно.',
   'slaba-parola': 'Новата парола трябва да е поне 8 знака.',
   'greshna-parola': 'Текущата парола е грешна.',
+  'lovable-url-nevaliden': 'Линкът трябва да е публичен сертификат от linkedin.com или lovable.dev.',
+  'lovable-url-zaet': 'Този сертификат вече е свързан с друг профил.',
+  'lovable-ne-otkrit':
+    'Не открихме Vibe Coding ниво на тази страница. Провери дали сертификатът е публичен, или използвай потвърждение по имейл.',
+  'lovable-imeyl-nedostapen': 'Потвърждението по имейл не е налично в момента. Използвай линк към сертификата.',
+  'lovable-imeyl-neuspeshen': 'Имейлът не можа да бъде изпратен. Опитай отново след малко.',
+  'lovable-tvarde-chesto': 'Вече изпратихме код — провери пощата си или опитай след минута.',
+  'lovable-kod-greshen': 'Кодът е грешен или е изтекъл.',
+};
+const LOVABLE_OK: Record<string, string> = {
+  ok: 'Lovable значката е потвърдена и синхронизирана.',
+  kod: 'Изпратихме 6-цифрен код на имейла ти. Въведи го по-долу.',
+  premahnato: 'Lovable значката е премахната.',
 };
 
 const toggles = [
@@ -39,6 +58,7 @@ const toggles = [
     <h1>Настройки</h1>
 
     {saved && <div class="notice notice-ok">Промените са запазени.</div>}
+    {lovable && LOVABLE_OK[lovable] && <div class="notice notice-ok">{LOVABLE_OK[lovable]}</div>}
     {error && <div class="notice notice-error">{ERRORS[error] ?? 'Нещо се обърка.'}</div>}
 
     <section class="card">
@@ -76,6 +96,86 @@ const toggles = [
           </form>
         </div>
       ))}
+    </section>
+
+    <section class="card">
+      <h2 class="section-label">LOVABLE ЗНАЧКА</h2>
+      {user.lovable_level > 0 ? (
+        <div class="lv-current">
+          <div class="lv-row">
+            <LovableBadge level={user.lovable_level} size="md" />
+            <div class="lv-info">
+              {user.lovable_verified_via === 'url' ? (
+                <>
+                  Потвърдена чрез <a href={user.lovable_badge_url} target="_blank" rel="noopener nofollow">сертификат</a> ·
+                  синхронизира се автоматично{user.lovable_synced_at && ` · обновена на ${bgDate(user.lovable_synced_at)}`}
+                </>
+              ) : (
+                'Потвърдена по имейл'
+              )}
+            </div>
+          </div>
+          <div class="lv-actions">
+            {user.lovable_verified_via === 'url' && (
+              <form method="post" action="/api/lovable/sync">
+                <button type="submit" class="btn btn-dark">Обнови сега</button>
+              </form>
+            )}
+            <form method="post" action="/api/lovable/remove">
+              <button type="submit" class="btn btn-danger-outline">Премахни</button>
+            </form>
+          </div>
+        </div>
+      ) : (
+        <div class="lv-setup">
+          <p class="lv-desc">
+            Покажи своето Lovable „Vibe Coding“ ниво до името си. Постави линк към публичния си сертификат
+            (LinkedIn или lovable.dev) — нивото се разчита и обновява автоматично. Всеки сертификат може да се
+            използва само от един профил.
+          </p>
+          <form method="post" action="/api/lovable/verify" class="profile-form">
+            <label>
+              Линк към сертификата
+              <input
+                class="input"
+                type="url"
+                name="url"
+                placeholder="https://www.linkedin.com/… или https://lovable.dev/…"
+                required
+              />
+            </label>
+            <button type="submit" class="btn btn-dark">Потвърди значката</button>
+          </form>
+          {emailFlow && (
+            <details class="lv-email">
+              <summary>Нямам LinkedIn — потвърждение по имейл</summary>
+              <p class="lv-desc">
+                Ще изпратим 6-цифрен код на {user.email}. Значката ще е отбелязана като „потвърдена по имейл“.
+              </p>
+              <form method="post" action="/api/lovable/email" class="lv-inline">
+                <select class="input" name="level" required>
+                  {Object.entries(LOVABLE_LEVELS).map(([lvl, info]) => (
+                    <option value={lvl}>{info.label}</option>
+                  ))}
+                </select>
+                <button type="submit" class="btn btn-dark">Изпрати код</button>
+              </form>
+              <form method="post" action="/api/lovable/confirm" class="lv-inline">
+                <input
+                  class="input"
+                  name="code"
+                  inputmode="numeric"
+                  pattern="\d{6}"
+                  maxlength="6"
+                  placeholder="Код от имейла"
+                  required
+                />
+                <button type="submit" class="btn btn-dark">Потвърди кода</button>
+              </form>
+            </details>
+          )}
+        </div>
+      )}
     </section>
 
     <section class="card">
@@ -128,6 +228,21 @@ const toggles = [
   }
   .switch.on .knob { left: 23px; }
   .lang { width: 220px; }
+  .lv-current { display: flex; flex-direction: column; gap: 14px; }
+  .lv-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .lv-info { font-size: 13px; color: var(--muted); font-weight: 600; }
+  .lv-info a { text-decoration: underline; }
+  .lv-actions { display: flex; gap: 10px; }
+  .lv-actions .btn { padding: 8px 16px; font-size: 13px; }
+  .lv-setup { display: flex; flex-direction: column; gap: 14px; }
+  .lv-desc { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.5; }
+  .lv-email > summary { font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
+  .lv-email > summary:hover { color: var(--accent); }
+  .lv-email { display: flex; flex-direction: column; gap: 12px; }
+  .lv-email[open] > summary { margin-bottom: 4px; }
+  .lv-inline { display: flex; gap: 10px; }
+  .lv-inline .input { flex: 1; min-width: 0; }
+  .lv-inline .btn { flex-shrink: 0; padding: 10px 16px; }
   section.danger { border: 1.5px solid #F9C4C2; }
   .red { color: var(--danger); margin-bottom: 8px; }
   section.danger p { margin: 0 0 14px; font-size: 14px; color: var(--muted); }

@@ -11,6 +11,10 @@ export interface SessionUser {
   notif_email: number;
   notif_digest: number;
   public_profile: number;
+  lovable_level: number;
+  lovable_badge_url: string | null;
+  lovable_verified_via: 'url' | 'email' | null;
+  lovable_synced_at: string | null;
   created_at: string;
 }
 
@@ -75,7 +79,9 @@ export async function getSessionUser(db: D1Database, token: string): Promise<Ses
   const row = await db
     .prepare(
       `SELECT u.id, u.email, u.username, u.name, u.bio, u.role, u.blocked,
-              u.notif_email, u.notif_digest, u.public_profile, u.created_at
+              u.notif_email, u.notif_digest, u.public_profile,
+              u.lovable_level, u.lovable_badge_url, u.lovable_verified_via, u.lovable_synced_at,
+              u.created_at
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token = ? AND s.expires_at > datetime('now')`
     )

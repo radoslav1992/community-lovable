@@ -1,4 +1,5 @@
 ---
+import LovableBadge from './LovableBadge.astro';
 import { tagStyle, timeAgo } from '../lib/format';
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
     created_at: string;
     author_name: string;
     author_username: string;
+    author_lovable_level?: number;
     votes: number;
     comment_count: number;
     voted: number;
@@ -35,6 +37,7 @@ const url = `/t/${post.slug}`;
     <p>{post.excerpt}</p>
     <div class="meta">
       <a href={`/u/${post.author_username}`} class="author">{post.author_name}</a>
+      <LovableBadge level={post.author_lovable_level ?? 0} />
       <span>{timeAgo(post.created_at)}</span>
       <a href={`${url}#komentari`} class="comments">💬 {post.comment_count}</a>
     </div>
