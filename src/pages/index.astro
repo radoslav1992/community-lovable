@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import PostCard from '../components/PostCard.astro';
+import { AUTHOR_LOVABLE_SQL } from '../lib/lovable';
 import { TAGS, eventDayMonth } from '../lib/format';
 
 const db = Astro.locals.runtime.env.DB;
@@ -17,8 +18,7 @@ const offset = (page - 1) * PER_PAGE;
 
 const postsQuery = `
   SELECT p.id, p.tag, p.title, p.slug, p.excerpt, p.created_at,
-    u.name AS author_name, u.username AS author_username,
-    u.lovable_profile_url IS NOT NULL AS author_lovable, u.lovable_top_percent AS author_lovable_top,
+    u.name AS author_name, u.username AS author_username, ${AUTHOR_LOVABLE_SQL},
     p.base_votes + (SELECT COUNT(*) FROM votes v WHERE v.post_id = p.id) AS votes,
     (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
     EXISTS(SELECT 1 FROM votes v2 WHERE v2.post_id = p.id AND v2.user_id = ?1) AS voted

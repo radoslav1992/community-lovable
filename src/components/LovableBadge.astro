@@ -1,16 +1,23 @@
 ---
+import { lovableTier } from '../lib/lovable';
+
 interface Props {
   verified: boolean | number;
-  topPercent?: number | null;
+  rank?: number | null;
+  edits?: number | null;
   size?: 'sm' | 'md';
 }
 
-const { verified, topPercent = null, size = 'sm' } = Astro.props;
-const label = topPercent ? `Топ ${topPercent}% Lovable` : 'Lovable билдър';
-const style = topPercent ? 'background:#FFE0F1;color:#C4005D' : 'background:#FFE4D3;color:#C24E00';
+const { verified, rank = null, edits = null, size = 'sm' } = Astro.props;
+const tier = lovableTier(edits);
+const label = tier ? `${tier.label}${rank ? ` №${rank}` : ''}` : 'Lovable билдър';
+const style = tier ? tier.style : 'background:#FFE4D3;color:#C24E00';
+const title = tier
+  ? `Lovable ${tier.label}${rank ? ` · №${rank} в класацията на общността` : ''} (${edits!.toLocaleString('bg-BG')} редакции за последната година)`
+  : 'Потвърден Lovable профил';
 ---
 {!!verified && (
-  <span class:list={['lovable-badge', size]} style={style} title="Потвърден Lovable профил">
+  <span class:list={['lovable-badge', size]} style={style} title={title}>
     ⚡ {label}
   </span>
 )}

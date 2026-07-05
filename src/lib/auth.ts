@@ -15,6 +15,7 @@ export interface SessionUser {
   lovable_username: string | null;
   lovable_top_percent: number | null;
   lovable_badges: string;
+  lovable_edits: number | null;
   lovable_synced_at: string | null;
   created_at: string;
 }
@@ -81,7 +82,8 @@ export async function getSessionUser(db: D1Database, token: string): Promise<Ses
     .prepare(
       `SELECT u.id, u.email, u.username, u.name, u.bio, u.role, u.blocked,
               u.notif_email, u.notif_digest, u.public_profile,
-              u.lovable_profile_url, u.lovable_username, u.lovable_top_percent, u.lovable_badges, u.lovable_synced_at,
+              u.lovable_profile_url, u.lovable_username, u.lovable_top_percent, u.lovable_badges,
+              u.lovable_edits, u.lovable_synced_at,
               u.created_at
        FROM sessions s JOIN users u ON u.id = s.user_id
        WHERE s.token = ? AND s.expires_at > datetime('now')`

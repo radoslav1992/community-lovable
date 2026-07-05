@@ -10,7 +10,8 @@ export const POST: APIRoute = async ({ locals, redirect }) => {
     db
       .prepare(
         `UPDATE users SET lovable_profile_url = NULL, lovable_username = NULL,
-           lovable_top_percent = NULL, lovable_badges = '[]', lovable_synced_at = NULL WHERE id = ?`
+           lovable_top_percent = NULL, lovable_badges = '[]', lovable_edits = NULL,
+           lovable_synced_at = NULL WHERE id = ?`
       )
       .bind(user.id),
     db.prepare('DELETE FROM lovable_profile_claims WHERE user_id = ?').bind(user.id),

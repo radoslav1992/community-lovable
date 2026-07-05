@@ -14,7 +14,7 @@ export const GET: APIRoute = async ({ locals, site }) => {
     db.prepare(`SELECT username FROM users WHERE public_profile = 1 AND blocked = 0 LIMIT 1000`),
   ]);
 
-  const staticPages = ['/', '/sabitiya', '/novini', '/obuchenie'];
+  const staticPages = ['/', '/sabitiya', '/novini', '/obuchenie', '/klasatsiya'];
   const urls: string[] = staticPages.map(
     (p) => `<url><loc>${origin}${p}</loc><changefreq>hourly</changefreq><priority>${p === '/' ? '1.0' : '0.8'}</priority></url>`
   );
