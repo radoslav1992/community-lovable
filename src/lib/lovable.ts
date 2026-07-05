@@ -185,14 +185,140 @@ export async function fetchProfileRsc(url: string): Promise<string | null> {
   }
 }
 
+const API_BASE = 'https://api.lovable.dev';
+
+export interface LovableApiProfile {
+  id: string;
+  username: string;
+  bio: string;
+  followers: number | null;
+  following: number | null;
+}
+
+/** Public profile from Lovable's Go API (confirmed: GET /profile/{username}). */
+export async function fetchApiProfile(username: string): Promise<LovableApiProfile | null> {
+  try {
+    const res = await fetch(`${API_BASE}/profile/${encodeURIComponent(username)}`, {
+      signal: AbortSignal.timeout(10_000),
+      headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    const j = (await res.json()) as any;
+    if (!j || typeof j !== 'object' || !j.id) return null;
+    return {
+      id: String(j.id),
+      username: String(j.username ?? username),
+      bio: String(j.attributes?.bio ?? ''),
+      followers: typeof j.followers_count === 'number' ? j.followers_count : null,
+      following: typeof j.following_count === 'number' ? j.following_count : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** A daily-contributions map: "yyyy-MM-dd" -> edit count. */
+function extractDailyMap(j: unknown): Record<string, number> | null {
+  for (const c of [j, (j as any)?.contributions, (j as any)?.data, (j as any)?.days]) {
+    if (!c || typeof c !== 'object' || Array.isArray(c)) continue;
+    const keys = Object.keys(c);
+    if (
+      keys.every((k) => /^\d{4}-\d{2}-\d{2}$/.test(k)) &&
+      keys.every((k) => typeof (c as Record<string, unknown>)[k] === 'number')
+    ) {
+      return c as Record<string, number>;
+    }
+  }
+  return null;
+}
+
+/** Contribution-endpoint shapes to try, most likely first. */
+export function contributionPaths(id: string, username: string): string[] {
+  return [
+    `/user/${id}/contributions`,
+    `/users/${id}/contributions`,
+    `/profile/${encodeURIComponent(username)}/contributions`,
+    `/user/${id}/activity`,
+    `/contributions/${id}`,
+  ];
+}
+
+/** Fetches the daily edit-count map, trying the endpoint shapes in order. */
+export async function fetchContributions(id: string, username: string): Promise<Record<string, number> | null> {
+  for (const p of contributionPaths(id, username)) {
+    try {
+      const res = await fetch(API_BASE + p, {
+        signal: AbortSignal.timeout(6_000),
+        headers: { 'User-Agent': BROWSER_UA, Accept: 'application/json' },
+      });
+      if (!res.ok) continue;
+      const map = extractDailyMap(await res.json());
+      if (map !== null) return map;
+    } catch {
+      // try the next shape
+    }
+  }
+  return null;
+}
+
 /**
- * Fetches and parses a profile: the HTML page first, and when the activity
- * stats are missing from it (they are client-loaded), the flight payload as
- * a fallback. `html` is null only when the page itself was unreachable.
+ * Derives the activity stats from the daily map the same way Lovable's own
+ * profile component does: sum/count over the trailing 365 days, streak
+ * walking back from today, average over 365.
+ */
+export function computeActivity(map: Record<string, number>): {
+  edits: number;
+  daysActive: number;
+  streakDays: number;
+  dailyAvg: number;
+} {
+  const DAY = 86_400_000;
+  const today = Date.now();
+  let edits = 0;
+  let daysActive = 0;
+  const counts: number[] = [];
+  for (let i = 364; i >= 0; i--) {
+    const key = new Date(today - i * DAY).toISOString().slice(0, 10);
+    const n = map[key] ?? 0;
+    counts.push(n);
+    edits += n;
+    if (n > 0) daysActive++;
+  }
+  let streakDays = 0;
+  for (let i = counts.length - 1; i >= 0 && counts[i]! > 0; i--) streakDays++;
+  const dailyAvg = Math.round((edits / 365) * 10) / 10;
+  return { edits, daysActive, streakDays, dailyAvg };
+}
+
+/**
+ * Fetches and parses a profile. Primary source is the public Go API
+ * (profile body for the bio/verification, contributions for the activity
+ * stats); the HTML page + flight payload remain as fallback. `html` carries
+ * the text the ownership code is checked against (API bio, or page HTML).
  */
 export async function fetchAndParseProfile(
   url: string
 ): Promise<{ html: string | null; parsed: ParsedProfile | null }> {
+  const username = url.match(/\/@([^/]+)/)?.[1];
+  if (username) {
+    const api = await fetchApiProfile(username);
+    if (api) {
+      const stats: LovableStats = {};
+      if (api.followers !== null) stats.followers = api.followers;
+      if (api.following !== null) stats.following = api.following;
+      let edits: number | null = null;
+      const contrib = await fetchContributions(api.id, api.username);
+      if (contrib !== null) {
+        const a = computeActivity(contrib);
+        edits = a.edits;
+        stats.daysActive = a.daysActive;
+        stats.streakDays = a.streakDays;
+        stats.dailyAvg = a.dailyAvg;
+      }
+      return { html: api.bio, parsed: { topPercent: null, badges: [], edits, stats } };
+    }
+  }
+
   const html = await fetchProfileHtml(url);
   if (html === null) return { html: null, parsed: null };
   let parsed = parseProfileBadges(html);

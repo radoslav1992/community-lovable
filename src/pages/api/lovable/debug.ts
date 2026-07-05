@@ -1,5 +1,13 @@
 import type { APIRoute } from 'astro';
-import { fetchProfileHtml, fetchProfileRsc, parseProfileBadges } from '../../../lib/lovable';
+import {
+  computeActivity,
+  contributionPaths,
+  fetchApiProfile,
+  fetchContributions,
+  fetchProfileHtml,
+  fetchProfileRsc,
+  parseProfileBadges,
+} from '../../../lib/lovable';
 
 const FETCH_HEADERS = {
   'User-Agent':
@@ -135,6 +143,34 @@ export const GET: APIRoute = async ({ url, locals }) => {
       }
     }
     return Response.json({ username, results });
+  }
+
+  // The production data path: profile body + contributions cascade, with
+  // per-endpoint raw results for transparency.
+  if (url.searchParams.get('mode') === 'contrib') {
+    const username = target.match(/\/@([^/]+)/)?.[1] ?? user.lovable_username ?? '';
+    const profile = await fetchApiProfile(username);
+    if (!profile) return Response.json({ username, profile: null, note: 'profile API returned nothing' });
+    const attempts = [];
+    for (const p of contributionPaths(profile.id, profile.username)) {
+      try {
+        const res = await fetch(`https://api.lovable.dev${p}`, {
+          signal: AbortSignal.timeout(6_000),
+          headers: { ...FETCH_HEADERS, Accept: 'application/json' },
+        });
+        attempts.push({ path: p, status: res.status, snippet: (await res.text()).slice(0, 300) });
+      } catch (e) {
+        attempts.push({ path: p, error: String(e).slice(0, 100) });
+      }
+    }
+    const contrib = await fetchContributions(profile.id, profile.username);
+    return Response.json({
+      profile,
+      attempts,
+      contributionsFound: contrib !== null,
+      sampleDays: contrib ? Object.entries(contrib).slice(-5) : null,
+      activity: contrib ? computeActivity(contrib) : null,
+    });
   }
 
   // Deep-dive into one script chunk: extract the HTTP-client calls and
