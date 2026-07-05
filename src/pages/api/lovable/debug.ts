@@ -137,6 +137,70 @@ export const GET: APIRoute = async ({ url, locals }) => {
     return Response.json({ username, results });
   }
 
+  // Deep-dive into one script chunk: extract the HTTP-client calls and
+  // path literals, and auto-probe activity-looking paths against the Go API.
+  // ?mode=chunk&c=<chunk-file-name-with-dpl-query>
+  if (url.searchParams.get('mode') === 'chunk') {
+    const c = url.searchParams.get('c') ?? '';
+    if (!/^[\w.~=?-]+$/.test(c)) return Response.json({ error: 'bad chunk name' }, { status: 400 });
+    const username = target.match(/\/@([^/]+)/)?.[1] ?? user.lovable_username ?? '';
+    const res = await fetch(`https://lovable.dev/_next/static/chunks/${c}`, {
+      signal: AbortSignal.timeout(8_000),
+      headers: FETCH_HEADERS,
+    });
+    if (!res.ok) return Response.json({ chunk: c, status: res.status });
+    const js = (await res.text()).slice(0, 3_000_000);
+
+    const getCalls = [...js.matchAll(/\.(get|post)\(\s*(["'`])([^"'`\\]{1,200})\2/g)].map(
+      (m) => `${m[1]} ${m[3]}`
+    );
+    const pathLits = [
+      ...new Set([...js.matchAll(/(["'`])(\/[^"'`\s\\]{2,160})\1/g)].map((m) => m[2]!)),
+    ];
+    const excerpts: string[] = [];
+    for (const m of js.matchAll(/getGoApi|user-activity|daily|heatmap|activity|contribution/gi)) {
+      excerpts.push(js.slice(Math.max(0, m.index! - 150), m.index! + 450));
+      if (excerpts.length >= 6) break;
+    }
+
+    // Auto-probe activity-looking paths against the Go API, as-is and
+    // username-suffixed.
+    const candidates = [
+      ...new Set(
+        [...getCalls.map((g) => g.split(' ')[1]!), ...pathLits].filter((p) =>
+          /edit|activ|daily|heat|profil|user/i.test(p)
+        )
+      ),
+    ].slice(0, 6);
+    const probes = [];
+    for (const p of candidates) {
+      for (const full of [
+        `https://api.lovable.dev${p}`,
+        p.includes(username) ? null : `https://api.lovable.dev${p.replace(/\/$/, '')}/${username}`,
+      ]) {
+        if (!full) continue;
+        try {
+          const r = await fetch(full, {
+            signal: AbortSignal.timeout(6_000),
+            headers: { ...FETCH_HEADERS, Accept: 'application/json, */*' },
+          });
+          probes.push({ url: full, status: r.status, snippet: (await r.text()).slice(0, 250) });
+        } catch (e) {
+          probes.push({ url: full, error: String(e).slice(0, 100) });
+        }
+      }
+    }
+
+    return Response.json({
+      chunk: c,
+      length: js.length,
+      getCalls: getCalls.slice(0, 40),
+      pathLits: pathLits.slice(0, 60),
+      excerpts,
+      probes,
+    });
+  }
+
   if (url.searchParams.get('mode') === 'discover') {
     const html = await fetchProfileHtml(target);
     if (html === null) return Response.json({ target, fetched: false });
