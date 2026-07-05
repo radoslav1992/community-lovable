@@ -1,6 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import LovableBadge from '../components/LovableBadge.astro';
+import LovableStatsCard from '../components/LovableStatsCard.astro';
 import { lovableRank } from '../lib/lovable';
 import { initials, memberSince, timeAgo, USER_GRADIENT, ROLE_LABELS } from '../lib/format';
 
@@ -54,6 +55,16 @@ const activity = activityRes.results as any[];
         <div><div class="num">{stats.points}</div><div class="lbl">точки</div></div>
       </div>
     </div>
+
+    {user.lovable_profile_url && (
+      <LovableStatsCard
+        profileUrl={user.lovable_profile_url}
+        lovableUsername={user.lovable_username!}
+        edits={user.lovable_edits}
+        statsJson={user.lovable_stats}
+        rank={myRank}
+      />
+    )}
 
     <h2>Последна активност</h2>
     <div class="card activity">
