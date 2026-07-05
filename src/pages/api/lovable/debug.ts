@@ -81,8 +81,43 @@ export const GET: APIRoute = async ({ url, locals }) => {
   if (!user || user.role !== 'admin') return new Response(null, { status: 404 });
 
   const target = url.searchParams.get('u') || user.lovable_profile_url;
-  if (!target || !/^https:\/\/lovable\.dev\//.test(target)) {
+  if (!target || !/^https:\/\/([a-z0-9-]+\.)?lovable\.dev\//.test(target)) {
     return Response.json({ error: 'no profile url' }, { status: 400 });
+  }
+
+  // The profile page hydrates from api.lovable.dev (PublicProfileBody.json
+  // schema); the activity panel data is fetched client-side. Probe the
+  // plausible endpoint shapes and report what each returns.
+  if (url.searchParams.get('mode') === 'api') {
+    const username = target.match(/\/@([^/]+)/)?.[1] ?? user.lovable_username ?? '';
+    const candidates = [
+      'https://api.lovable.dev/PublicProfileBody.json',
+      `https://api.lovable.dev/profiles/${username}`,
+      `https://api.lovable.dev/profiles/@${username}`,
+      `https://api.lovable.dev/profiles/username/${username}`,
+      `https://api.lovable.dev/users/${username}`,
+      `https://api.lovable.dev/users/@${username}`,
+      `https://api.lovable.dev/profiles/${username}/activity`,
+      `https://api.lovable.dev/profiles/${username}/edits`,
+      `https://api.lovable.dev/profiles/${username}/stats`,
+      `https://api.lovable.dev/users/${username}/activity`,
+      `https://lovable.dev/api/profiles/${username}`,
+      `https://lovable.dev/api/users/${username}/activity`,
+    ];
+    const results = [];
+    for (const cu of candidates) {
+      try {
+        const res = await fetch(cu, {
+          signal: AbortSignal.timeout(6_000),
+          headers: { ...FETCH_HEADERS, Accept: 'application/json, */*' },
+        });
+        const body = (await res.text()).slice(0, 400);
+        results.push({ url: cu, status: res.status, type: res.headers.get('content-type'), snippet: body });
+      } catch (e) {
+        results.push({ url: cu, error: String(e).slice(0, 120) });
+      }
+    }
+    return Response.json({ username, results });
   }
 
   if (url.searchParams.get('mode') === 'discover') {
