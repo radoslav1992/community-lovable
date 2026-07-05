@@ -1,0 +1,25 @@
+---
+import { LOVABLE_LEVELS } from '../lib/lovable';
+
+interface Props {
+  level: number;
+  size?: 'sm' | 'md';
+}
+
+const { level, size = 'sm' } = Astro.props;
+const info = LOVABLE_LEVELS[level];
+---
+{info && (
+  <span class:list={['lovable-badge', size]} style={info.style} title={`Lovable Vibe Coding — ${info.name}`}>
+    ⚡ {info.label}
+  </span>
+)}
+
+<style>
+  .lovable-badge {
+    display: inline-flex; align-items: center; gap: 3px; border-radius: 99px;
+    font-weight: 800; white-space: nowrap; vertical-align: middle;
+  }
+  .lovable-badge.sm { font-size: 11px; padding: 2px 8px; }
+  .lovable-badge.md { font-size: 13px; padding: 4px 12px; }
+</style>

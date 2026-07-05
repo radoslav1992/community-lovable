@@ -1,6 +1,8 @@
 ---
 import Base from '../../layouts/Base.astro';
+import LovableBadge from '../../components/LovableBadge.astro';
 import { initials, memberSince, timeAgo, avatarGradient, ROLE_LABELS } from '../../lib/format';
+import { maybeResyncBadge } from '../../lib/lovable';
 
 const db = Astro.locals.runtime.env.DB;
 const viewer = Astro.locals.user;
@@ -8,13 +10,17 @@ const { username } = Astro.params;
 
 const person = await db
   .prepare(
-    `SELECT id, username, name, bio, role, blocked, public_profile, created_at
+    `SELECT id, username, name, bio, role, blocked, public_profile, created_at,
+       lovable_level, lovable_badge_url, lovable_verified_via, lovable_synced_at
      FROM users WHERE username = ?`
   )
   .bind(username)
   .first<any>();
 
 if (!person || person.blocked) return new Response(null, { status: 404, statusText: 'Not Found' });
+
+// Keep displayed badges fresh even when their owner rarely logs in.
+maybeResyncBadge(db, person, (p) => Astro.locals.runtime.ctx.waitUntil(p));
 
 const visible = !!person.public_profile || !!viewer;
 
@@ -51,7 +57,7 @@ const posts = (postsRes?.results as any[]) ?? [];
     <div class="card head">
       <div class="avatar big" style={`background:${avatarGradient(person.id)}`}>{initials(person.name)}</div>
       <div class="who">
-        <h1>{person.name}</h1>
+        <h1>{person.name} <LovableBadge level={person.lovable_level} size="md" /></h1>
         <div class="meta">
           @{person.username} · {memberSince(person.created_at)}
           {person.role !== 'member' && <> · <span class="role">{ROLE_LABELS[person.role]}</span></>}

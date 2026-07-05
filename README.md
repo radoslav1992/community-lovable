@@ -61,6 +61,15 @@ npm run preview            # build + wrangler dev на http://localhost:8787
 5. (По избор) Вържи домейна `communitylovable.bg` от Cloudflare dashboard →
    Workers → Custom Domains.
 
+6. (По избор) За потвърждение на Lovable значки по имейл (fallback без
+   LinkedIn) добави [Resend](https://resend.com) ключ; `EMAIL_FROM` е
+   опционален подател (по подразбиране `noreply@communitylovable.bg`):
+
+   ```bash
+   npx wrangler secret put RESEND_API_KEY
+   npx wrangler secret put EMAIL_FROM   # по избор
+   ```
+
 ### След първия деплой — ВАЖНО
 
 Seed данните създават демо администратор:
@@ -104,5 +113,10 @@ src/
 - **Профил** — статистика (публикации, коментари, точки) и последна активност
 - **Настройки** — профил, известия (toggle-и), изтриване на акаунт с
   анонимизация на съдържанието
+- **Lovable значки** — членовете свързват своя Lovable „Vibe Coding“
+  сертификат (публичен линк от LinkedIn или lovable.dev); нивото (L1–L5) се
+  разчита автоматично от страницата, всеки линк може да се използва само от
+  един профил и се ресинхронизира периодично. Fallback без LinkedIn:
+  потвърждение с код по имейл (изисква `RESEND_API_KEY`)
 - **Админ панел** — блокиране на потребители, преглед на докладвано съдържание
   (одобри / скрий поста)
