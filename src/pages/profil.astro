@@ -38,7 +38,7 @@ const activity = activityRes.results as any[];
     <div class="card head">
       <div class="avatar big" style={`background:${USER_GRADIENT}`}>{initials(user.name)}</div>
       <div class="who">
-        <h1>{user.name} <LovableBadge level={user.lovable_level} size="md" /></h1>
+        <h1>{user.name} <LovableBadge verified={!!user.lovable_profile_url} topPercent={user.lovable_top_percent} size="md" /></h1>
         <div class="meta">
           @{user.username} · {memberSince(user.created_at)}
           {user.role !== 'member' && <> · <span class="role">{ROLE_LABELS[user.role]}</span></>}

@@ -1,35 +1,46 @@
 ---
 import Base from '../layouts/Base.astro';
 import LovableBadge from '../components/LovableBadge.astro';
-import { LOVABLE_LEVELS } from '../lib/lovable';
-import { emailConfigured } from '../lib/email';
 import { bgDate } from '../lib/format';
 
 const user = Astro.locals.user;
 if (!user) return Astro.redirect('/vhod');
 
+const db = Astro.locals.runtime.env.DB;
+const claim = user.lovable_profile_url
+  ? null
+  : await db
+      .prepare(
+        `SELECT profile_url, username, code FROM lovable_profile_claims
+         WHERE user_id = ? AND expires_at > datetime('now')`
+      )
+      .bind(user.id)
+      .first<{ profile_url: string; username: string; code: string }>();
+let lovableBadges: string[] = [];
+try {
+  lovableBadges = JSON.parse(user.lovable_badges || '[]');
+} catch {}
+
 const saved = Astro.url.searchParams.get('zapazeno') === '1';
 const error = Astro.url.searchParams.get('greshka');
 const lovable = Astro.url.searchParams.get('lovable');
-const emailFlow = emailConfigured(Astro.locals.runtime.env);
 const ERRORS: Record<string, string> = {
   'zaet-imeyl': 'Вече има профил с този имейл.',
   'nevalidni-danni': 'Моля, попълни полетата коректно.',
   'slaba-parola': 'Новата парола трябва да е поне 8 знака.',
   'greshna-parola': 'Текущата парола е грешна.',
-  'lovable-url-nevaliden': 'Линкът трябва да е публичен сертификат от linkedin.com или lovable.dev.',
-  'lovable-url-zaet': 'Този сертификат вече е свързан с друг профил.',
-  'lovable-ne-otkrit':
-    'Не открихме Vibe Coding ниво на тази страница. Провери дали сертификатът е публичен, или използвай потвърждение по имейл.',
-  'lovable-imeyl-nedostapen': 'Потвърждението по имейл не е налично в момента. Използвай линк към сертификата.',
-  'lovable-imeyl-neuspeshen': 'Имейлът не можа да бъде изпратен. Опитай отново след малко.',
-  'lovable-tvarde-chesto': 'Вече изпратихме код — провери пощата си или опитай след минута.',
-  'lovable-kod-greshen': 'Кодът е грешен или е изтекъл.',
+  'lovable-profil-nevaliden': 'Въведи своя Lovable профил — @потребител или lovable.dev/@потребител.',
+  'lovable-profil-zaet': 'Този Lovable профил вече е свързан с друг акаунт.',
+  'lovable-profil-nedostapen':
+    'Профилът не е достъпен. Провери дали е публичен (Settings → Your account → Profile visibility) и опитай пак.',
+  'lovable-kod-lipsva':
+    'Не открихме кода в профила ти. Добави го в биото на lovable.dev, изчакай минута и опитай отново.',
+  'lovable-nyama-zayavka': 'Няма активна заявка — въведи профила си отново.',
 };
 const LOVABLE_OK: Record<string, string> = {
-  ok: 'Lovable значката е потвърдена и синхронизирана.',
-  kod: 'Изпратихме 6-цифрен код на имейла ти. Въведи го по-долу.',
-  premahnato: 'Lovable значката е премахната.',
+  ok: 'Lovable профилът е потвърден, а значките — синхронизирани.',
+  kod: 'Заявката е създадена. Добави кода по-долу в биото на Lovable профила си и натисни „Провери“.',
+  premahnato: 'Lovable профилът е премахнат.',
 };
 
 const toggles = [
@@ -99,81 +110,59 @@ const toggles = [
     </section>
 
     <section class="card">
-      <h2 class="section-label">LOVABLE ЗНАЧКА</h2>
-      {user.lovable_level > 0 ? (
+      <h2 class="section-label">LOVABLE ПРОФИЛ</h2>
+      {user.lovable_profile_url ? (
         <div class="lv-current">
           <div class="lv-row">
-            <LovableBadge level={user.lovable_level} size="md" />
+            <LovableBadge verified={true} topPercent={user.lovable_top_percent} size="md" />
             <div class="lv-info">
-              {user.lovable_verified_via === 'url' ? (
-                <>
-                  Потвърдена чрез <a href={user.lovable_badge_url} target="_blank" rel="noopener nofollow">сертификат</a> ·
-                  синхронизира се автоматично{user.lovable_synced_at && ` · обновена на ${bgDate(user.lovable_synced_at)}`}
-                </>
-              ) : (
-                'Потвърдена по имейл'
-              )}
+              Свързан с <a href={user.lovable_profile_url} target="_blank" rel="noopener nofollow">@{user.lovable_username}</a> ·
+              значките се синхронизират автоматично{user.lovable_synced_at && ` · обновено на ${bgDate(user.lovable_synced_at)}`}
             </div>
           </div>
+          {lovableBadges.length > 0 && (
+            <ul class="lv-badges">
+              {lovableBadges.map((b) => <li>{b}</li>)}
+            </ul>
+          )}
           <div class="lv-actions">
-            {user.lovable_verified_via === 'url' && (
-              <form method="post" action="/api/lovable/sync">
-                <button type="submit" class="btn btn-dark">Обнови сега</button>
-              </form>
-            )}
+            <form method="post" action="/api/lovable/sync">
+              <button type="submit" class="btn btn-dark">Обнови сега</button>
+            </form>
             <form method="post" action="/api/lovable/remove">
               <button type="submit" class="btn btn-danger-outline">Премахни</button>
+            </form>
+          </div>
+        </div>
+      ) : claim ? (
+        <div class="lv-setup">
+          <p class="lv-desc">
+            Стъпка 2: добави този код в <strong>биото</strong> на профила си
+            <a href={claim.profile_url} target="_blank" rel="noopener nofollow"> @{claim.username}</a> (lovable.dev →
+            Settings → Your account → Profile). След като кодът е видим, натисни „Провери“ — после можеш да го изтриеш
+            от биото.
+          </p>
+          <div class="lv-code">{claim.code}</div>
+          <div class="lv-actions">
+            <form method="post" action="/api/lovable/verify">
+              <button type="submit" class="btn btn-dark">Провери</button>
+            </form>
+            <form method="post" action="/api/lovable/remove">
+              <button type="submit" class="btn btn-danger-outline">Откажи</button>
             </form>
           </div>
         </div>
       ) : (
         <div class="lv-setup">
           <p class="lv-desc">
-            Покажи своето Lovable „Vibe Coding“ ниво до името си. Постави линк към публичния си сертификат
-            (LinkedIn или lovable.dev) — нивото се разчита и обновява автоматично. Всеки сертификат може да се
-            използва само от един профил.
+            Свържи публичния си Lovable профил (lovable.dev/@потребител), за да покажеш значките си — например
+            „Top 10% of Lovable users“ — до името си в общността. Всеки Lovable профил може да се свърже само с
+            един акаунт, а собствеността се доказва с код в биото.
           </p>
-          <form method="post" action="/api/lovable/verify" class="profile-form">
-            <label>
-              Линк към сертификата
-              <input
-                class="input"
-                type="url"
-                name="url"
-                placeholder="https://www.linkedin.com/… или https://lovable.dev/…"
-                required
-              />
-            </label>
-            <button type="submit" class="btn btn-dark">Потвърди значката</button>
+          <form method="post" action="/api/lovable/claim" class="lv-inline">
+            <input class="input" name="profile" placeholder="@потребител или lovable.dev/@потребител" required />
+            <button type="submit" class="btn btn-dark">Свържи профила</button>
           </form>
-          {emailFlow && (
-            <details class="lv-email">
-              <summary>Нямам LinkedIn — потвърждение по имейл</summary>
-              <p class="lv-desc">
-                Ще изпратим 6-цифрен код на {user.email}. Значката ще е отбелязана като „потвърдена по имейл“.
-              </p>
-              <form method="post" action="/api/lovable/email" class="lv-inline">
-                <select class="input" name="level" required>
-                  {Object.entries(LOVABLE_LEVELS).map(([lvl, info]) => (
-                    <option value={lvl}>{info.label}</option>
-                  ))}
-                </select>
-                <button type="submit" class="btn btn-dark">Изпрати код</button>
-              </form>
-              <form method="post" action="/api/lovable/confirm" class="lv-inline">
-                <input
-                  class="input"
-                  name="code"
-                  inputmode="numeric"
-                  pattern="\d{6}"
-                  maxlength="6"
-                  placeholder="Код от имейла"
-                  required
-                />
-                <button type="submit" class="btn btn-dark">Потвърди кода</button>
-              </form>
-            </details>
-          )}
         </div>
       )}
     </section>
@@ -236,10 +225,12 @@ const toggles = [
   .lv-actions .btn { padding: 8px 16px; font-size: 13px; }
   .lv-setup { display: flex; flex-direction: column; gap: 14px; }
   .lv-desc { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.5; }
-  .lv-email > summary { font-size: 13px; font-weight: 700; color: var(--muted); cursor: pointer; }
-  .lv-email > summary:hover { color: var(--accent); }
-  .lv-email { display: flex; flex-direction: column; gap: 12px; }
-  .lv-email[open] > summary { margin-bottom: 4px; }
+  .lv-badges { margin: 0; padding-left: 20px; font-size: 14px; color: var(--ink-soft); }
+  .lv-code {
+    align-self: flex-start; font-weight: 800; font-size: 18px; letter-spacing: 0.06em;
+    padding: 10px 18px; border-radius: 12px; background: var(--accent-soft, #FFF0E8); color: var(--accent);
+    user-select: all;
+  }
   .lv-inline { display: flex; gap: 10px; }
   .lv-inline .input { flex: 1; min-width: 0; }
   .lv-inline .btn { flex-shrink: 0; padding: 10px 16px; }

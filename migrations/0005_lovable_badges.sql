@@ -1,21 +1,25 @@
--- Lovable Vibe Coding badges: level synced from a public certificate URL
--- (LinkedIn / lovable.dev), with an email-confirmed fallback.
+-- Lovable profile badges: members link their public lovable.dev/@username
+-- profile, prove ownership with a one-time code placed in the profile bio,
+-- and their public Lovable badges (e.g. "Top 10% of Lovable users") sync
+-- automatically.
 
-ALTER TABLE users ADD COLUMN lovable_level INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE users ADD COLUMN lovable_badge_url TEXT;
-ALTER TABLE users ADD COLUMN lovable_verified_via TEXT CHECK (lovable_verified_via IN ('url', 'email'));
+ALTER TABLE users ADD COLUMN lovable_profile_url TEXT;
+ALTER TABLE users ADD COLUMN lovable_username TEXT;
+ALTER TABLE users ADD COLUMN lovable_top_percent INTEGER;
+ALTER TABLE users ADD COLUMN lovable_badges TEXT NOT NULL DEFAULT '[]';
 ALTER TABLE users ADD COLUMN lovable_synced_at TEXT;
 
--- Each certificate URL can back only one account.
-CREATE UNIQUE INDEX idx_users_lovable_badge_url ON users(lovable_badge_url) WHERE lovable_badge_url IS NOT NULL;
+-- Each Lovable profile can back only one account.
+CREATE UNIQUE INDEX idx_users_lovable_profile ON users(lovable_profile_url) WHERE lovable_profile_url IS NOT NULL;
 
--- Pending confirmation codes for the email fallback flow.
-CREATE TABLE lovable_email_claims (
+-- Pending ownership claims: the member puts the code in their Lovable bio,
+-- then we fetch the profile and look for it.
+CREATE TABLE lovable_profile_claims (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+  profile_url TEXT NOT NULL,
+  username TEXT NOT NULL,
   code TEXT NOT NULL,
-  level INTEGER NOT NULL CHECK (level BETWEEN 1 AND 5),
   expires_at TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX idx_lovable_claims_user ON lovable_email_claims(user_id);

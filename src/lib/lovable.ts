@@ -1,78 +1,78 @@
-// Lovable Vibe Coding badge levels: verification against a public certificate
-// URL (LinkedIn certification or lovable.dev share page) and periodic re-sync.
+// Lovable profile badges: members claim their public lovable.dev/@username
+// profile, prove ownership via a one-time code in the profile bio, and their
+// public badges (e.g. "Top 10% of Lovable users") re-sync periodically.
 
-export interface LovableLevelInfo {
-  label: string;
-  name: string;
-  style: string;
-}
-
-export const LOVABLE_LEVELS: Record<number, LovableLevelInfo> = {
-  1: { label: 'L1 · Бронз', name: 'Bronze', style: 'background:#F1E0CC;color:#8A5A20' },
-  2: { label: 'L2 · Сребро', name: 'Silver', style: 'background:#E8E8EC;color:#5C6270' },
-  3: { label: 'L3 · Злато', name: 'Gold', style: 'background:#FFECC9;color:#A66300' },
-  4: { label: 'L4 · Платина', name: 'Platinum', style: 'background:#DFF3F0;color:#0E7A6E' },
-  5: { label: 'L5 · Диамант', name: 'Diamond', style: 'background:#E3E6FF;color:#3D53D6' },
-};
-
-const ALLOWED_HOSTS = ['linkedin.com', 'lovable.dev', 'lovable.app'];
-
-/** Re-check URL-verified badges this often. */
+/** Re-check verified profiles this often. */
 const SYNC_INTERVAL_DAYS = 7;
 
-const LEVEL_BY_NAME: Record<string, number> = {
-  bronze: 1,
-  silver: 2,
-  gold: 3,
-  platinum: 4,
-  diamond: 5,
-};
+export const CLAIM_TTL_HOURS = 24;
 
-/**
- * Normalizes a certificate URL so the same certificate always maps to the
- * same stored string (uniqueness check), stripping tracking params and
- * fragments. Returns null when the URL is not a supported host.
- */
-export function normalizeBadgeUrl(raw: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(raw.trim());
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-  const host = url.hostname.toLowerCase().replace(/^www\./, '');
-  const allowed = ALLOWED_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
-  if (!allowed) return null;
-  const path = url.pathname.replace(/\/+$/, '');
-  if (!path) return null;
-  return `https://${host}${path}`;
+const USERNAME_RE = /^[a-z0-9_.-]{2,40}$/i;
+
+export interface LovableProfileRef {
+  url: string;
+  username: string;
 }
 
 /**
- * Extracts the Vibe Coding level (1–5) from certificate page HTML.
- * Returns 0 when the page doesn't look like a Vibe Coding certificate.
+ * Accepts a full profile URL ("https://lovable.dev/@ivan"), "@ivan" or a bare
+ * username, and normalizes to the canonical profile URL. Returns null when
+ * the input is neither.
  */
-export function parseLevelFromHtml(html: string): number {
-  if (!/vibe[\s-]*coding/i.test(html)) return 0;
-  let level = 0;
-  // "L2: Silver", "L2 - Silver Vibe Coding"
-  for (const m of html.matchAll(/\bL([1-5])\b[^a-z0-9]{0,10}(bronze|silver|gold|platinum|diamond)/gi)) {
-    level = Math.max(level, parseInt(m[1]!, 10));
+export function normalizeProfileUrl(raw: string): LovableProfileRef | null {
+  const s = raw.trim();
+  let username: string | null = null;
+
+  const bare = s.replace(/^@/, '');
+  if (USERNAME_RE.test(bare) && !bare.includes('..')) {
+    username = bare;
+  } else {
+    try {
+      // Tolerate a pasted URL without a scheme ("lovable.dev/@ivan").
+      const u = new URL(/^[a-z]+:\/\//i.test(s) ? s : `https://${s}`);
+      const host = u.hostname.toLowerCase().replace(/^www\./, '');
+      if (host !== 'lovable.dev') return null;
+      const m = u.pathname.replace(/\/+$/, '').match(/^\/@([^/]+)$/);
+      if (!m || !USERNAME_RE.test(m[1]!)) return null;
+      username = m[1]!;
+    } catch {
+      return null;
+    }
   }
-  // "Silver Vibe Coding badge"
-  for (const m of html.matchAll(/(bronze|silver|gold|platinum|diamond)[^a-z0-9]{0,12}vibe[\s-]*coding/gi)) {
-    level = Math.max(level, LEVEL_BY_NAME[m[1]!.toLowerCase()] ?? 0);
-  }
-  // "Vibe Coding Level 3"
-  for (const m of html.matchAll(/vibe[\s-]*coding[^a-z0-9]{0,12}level[^0-9]{0,4}([1-5])/gi)) {
-    level = Math.max(level, parseInt(m[1]!, 10));
-  }
-  return level;
+
+  username = username.toLowerCase();
+  return { url: `https://lovable.dev/@${username}`, username };
 }
 
-/** Fetches a certificate page and returns the parsed level, or 0 on failure. */
-export async function fetchBadgeLevel(url: string): Promise<number> {
+export function generateClaimCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
+  return `CLBG-${hex.toUpperCase()}`;
+}
+
+export interface ParsedProfile {
+  topPercent: number | null;
+  badges: string[];
+}
+
+/**
+ * Extracts public badges from a profile page. Currently recognizes the
+ * "Top N% of Lovable users" badge; the pattern list is meant to grow as
+ * Lovable ships more public skills/badges.
+ */
+export function parseProfileBadges(html: string): ParsedProfile {
+  let topPercent: number | null = null;
+  for (const m of html.matchAll(/top\s*(\d{1,2})\s*%\s*of\s*(?:all\s*)?lovable\s*users/gi)) {
+    const n = parseInt(m[1]!, 10);
+    if (n > 0 && (topPercent === null || n < topPercent)) topPercent = n;
+  }
+  const badges: string[] = [];
+  if (topPercent !== null) badges.push(`Top ${topPercent}% of Lovable users`);
+  return { topPercent, badges };
+}
+
+/** Fetches a profile page's HTML, or null when unreachable/private. */
+export async function fetchProfileHtml(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
       redirect: 'follow',
@@ -84,25 +84,28 @@ export async function fetchBadgeLevel(url: string): Promise<number> {
         'Accept-Language': 'en,bg;q=0.8',
       },
     });
-    if (!res.ok) return 0;
-    const html = (await res.text()).slice(0, 1_500_000);
-    return parseLevelFromHtml(html);
+    if (!res.ok) return null;
+    return (await res.text()).slice(0, 2_000_000);
   } catch {
-    return 0;
+    return null;
   }
 }
 
 /**
- * Re-fetches a stored certificate URL and updates the user's level. Keeps the
- * previous level when the page can't be fetched or parsed (never downgrades on
- * a transient failure), but always records the sync attempt.
+ * Re-fetches a verified profile and updates the stored badges. Keeps the
+ * previous badges when the page can't be fetched (e.g. temporarily private) —
+ * never downgrades on a transient failure — but always records the attempt.
  */
-export async function resyncBadge(db: D1Database, userId: number, badgeUrl: string): Promise<void> {
-  const level = await fetchBadgeLevel(badgeUrl);
-  if (level > 0) {
+export async function resyncBadges(db: D1Database, userId: number, profileUrl: string): Promise<void> {
+  const html = await fetchProfileHtml(profileUrl);
+  if (html !== null) {
+    const parsed = parseProfileBadges(html);
     await db
-      .prepare("UPDATE users SET lovable_level = ?, lovable_synced_at = datetime('now') WHERE id = ?")
-      .bind(level, userId)
+      .prepare(
+        `UPDATE users SET lovable_top_percent = ?, lovable_badges = ?, lovable_synced_at = datetime('now')
+         WHERE id = ?`
+      )
+      .bind(parsed.topPercent, JSON.stringify(parsed.badges), userId)
       .run();
   } else {
     await db.prepare("UPDATE users SET lovable_synced_at = datetime('now') WHERE id = ?").bind(userId).run();
@@ -111,20 +114,19 @@ export async function resyncBadge(db: D1Database, userId: number, badgeUrl: stri
 
 interface BadgeHolder {
   id: number;
-  lovable_verified_via: string | null;
-  lovable_badge_url: string | null;
+  lovable_profile_url: string | null;
   lovable_synced_at: string | null;
 }
 
-/** Schedules a background re-sync when a URL-verified badge has gone stale. */
-export function maybeResyncBadge(
+/** Schedules a background badge re-sync when a verified profile has gone stale. */
+export function maybeResyncBadges(
   db: D1Database,
   person: BadgeHolder,
   waitUntil: (p: Promise<unknown>) => void
 ): void {
-  if (person.lovable_verified_via !== 'url' || !person.lovable_badge_url) return;
+  if (!person.lovable_profile_url) return;
   const synced = person.lovable_synced_at ? new Date(person.lovable_synced_at.replace(' ', 'T') + 'Z') : null;
   const stale = !synced || Date.now() - synced.getTime() > SYNC_INTERVAL_DAYS * 24 * 3600 * 1000;
   if (!stale) return;
-  waitUntil(resyncBadge(db, person.id, person.lovable_badge_url).catch(() => {}));
+  waitUntil(resyncBadges(db, person.id, person.lovable_profile_url).catch(() => {}));
 }

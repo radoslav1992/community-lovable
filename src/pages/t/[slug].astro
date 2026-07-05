@@ -10,7 +10,8 @@ const { slug } = Astro.params;
 const post = await db
   .prepare(
     `SELECT p.id, p.tag, p.title, p.slug, p.excerpt, p.body, p.created_at, p.hidden,
-      u.name AS author_name, u.username AS author_username, u.lovable_level AS author_lovable_level,
+      u.name AS author_name, u.username AS author_username,
+      u.lovable_profile_url IS NOT NULL AS author_lovable, u.lovable_top_percent AS author_lovable_top,
       p.base_votes + (SELECT COUNT(*) FROM votes v WHERE v.post_id = p.id) AS votes,
       EXISTS(SELECT 1 FROM votes v2 WHERE v2.post_id = p.id AND v2.user_id = ?2) AS voted
     FROM posts p JOIN users u ON u.id = p.user_id
@@ -27,7 +28,7 @@ const comments = (
   await db
     .prepare(
       `SELECT c.id, c.body, c.created_at, u.name AS author_name, u.username AS author_username,
-              u.lovable_level AS author_lovable_level
+              u.lovable_profile_url IS NOT NULL AS author_lovable, u.lovable_top_percent AS author_lovable_top
        FROM comments c JOIN users u ON u.id = c.user_id
        WHERE c.post_id = ? ORDER BY c.created_at ASC`
     )
@@ -77,7 +78,7 @@ const jsonLd = [
       <h1>{post.title}</h1>
       <div class="meta">
         <a href={`/u/${post.author_username}`} class="author">{post.author_name}</a>
-        <LovableBadge level={post.author_lovable_level} />
+        <LovableBadge verified={post.author_lovable} topPercent={post.author_lovable_top} />
         <span>{timeAgo(post.created_at)}</span>
       </div>
       <p class="body">{post.body}</p>
@@ -115,7 +116,7 @@ const jsonLd = [
         <div>
           <div class="c-head">
             <a href={`/u/${c.author_username}`} class="c-author">{c.author_name}</a>
-            <LovableBadge level={c.author_lovable_level} />
+            <LovableBadge verified={c.author_lovable} topPercent={c.author_lovable_top} />
             <span class="c-time">{timeAgo(c.created_at)}</span>
           </div>
           <p>{c.body}</p>

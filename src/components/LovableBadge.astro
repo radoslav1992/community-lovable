@@ -1,17 +1,17 @@
 ---
-import { LOVABLE_LEVELS } from '../lib/lovable';
-
 interface Props {
-  level: number;
+  verified: boolean | number;
+  topPercent?: number | null;
   size?: 'sm' | 'md';
 }
 
-const { level, size = 'sm' } = Astro.props;
-const info = LOVABLE_LEVELS[level];
+const { verified, topPercent = null, size = 'sm' } = Astro.props;
+const label = topPercent ? `Топ ${topPercent}% Lovable` : 'Lovable билдър';
+const style = topPercent ? 'background:#FFE0F1;color:#C4005D' : 'background:#FFE4D3;color:#C24E00';
 ---
-{info && (
-  <span class:list={['lovable-badge', size]} style={info.style} title={`Lovable Vibe Coding — ${info.name}`}>
-    ⚡ {info.label}
+{!!verified && (
+  <span class:list={['lovable-badge', size]} style={style} title="Потвърден Lovable профил">
+    ⚡ {label}
   </span>
 )}
 
