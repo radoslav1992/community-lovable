@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { fetchProfileHtml, parseProfileBadges } from '../../../lib/lovable';
+import { fetchAndParseProfile } from '../../../lib/lovable';
 
 /** Manual "refresh now" for a verified profile's badges. */
 export const POST: APIRoute = async ({ locals, redirect }) => {
@@ -8,13 +8,11 @@ export const POST: APIRoute = async ({ locals, redirect }) => {
   if (!user.lovable_profile_url) return redirect('/nastroyki', 303);
 
   const db = locals.runtime.env.DB;
-  const html = await fetchProfileHtml(user.lovable_profile_url);
-  if (html === null) {
+  const { html, parsed } = await fetchAndParseProfile(user.lovable_profile_url);
+  if (html === null || parsed === null) {
     await db.prepare("UPDATE users SET lovable_synced_at = datetime('now') WHERE id = ?").bind(user.id).run();
     return redirect('/nastroyki?greshka=lovable-profil-nedostapen', 303);
   }
-
-  const parsed = parseProfileBadges(html);
   await db
     .prepare(
       `UPDATE users SET lovable_top_percent = ?, lovable_badges = ?, lovable_edits = ?,
