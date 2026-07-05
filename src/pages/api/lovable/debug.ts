@@ -13,14 +13,19 @@ const FETCH_HEADERS = {
  * `maxChunks` referenced chunk files and greps them for /api|trpc paths and
  * activity-related keywords.
  */
-async function discoverApiCandidates(html: string, origin: string, maxChunks: number) {
-  const chunkUrls = [
+async function discoverApiCandidates(html: string, origin: string, maxChunks: number, skip = 0) {
+  const all = [
     ...new Set(
       [...html.matchAll(/\/_next\/static\/chunks\/[^"'\\ )]+\.js[^"'\\ )]*/g)].map((m) =>
         m[0]!.startsWith('http') ? m[0]! : origin + m[0]!
       )
     ),
-  ].slice(0, maxChunks);
+  ];
+  // Page-specific chunks (the ones that fetch the activity data) are
+  // referenced late in the document — scan from the end; `skip` shifts the
+  // window further back for a second pass.
+  const end = Math.max(0, all.length - skip);
+  const chunkUrls = all.slice(Math.max(0, end - maxChunks), end);
 
   const apiPaths = new Set<string>();
   const externalUrls = new Set<string>();
@@ -62,7 +67,9 @@ async function discoverApiCandidates(html: string, origin: string, maxChunks: nu
   }
 
   return {
+    totalChunks: all.length,
     chunksScanned: scanned.length,
+    window: { skip, maxChunks },
     apiPaths: [...apiPaths].sort(),
     externalUrls: [...externalUrls].sort().slice(0, 40),
     statChunks,
@@ -90,19 +97,29 @@ export const GET: APIRoute = async ({ url, locals }) => {
   // plausible endpoint shapes and report what each returns.
   if (url.searchParams.get('mode') === 'api') {
     const username = target.match(/\/@([^/]+)/)?.[1] ?? user.lovable_username ?? '';
+    // Optional account id (from the flight payload's initialProfileData.id)
+    // for id-keyed routes.
+    const id = url.searchParams.get('id');
     const candidates = [
-      'https://api.lovable.dev/PublicProfileBody.json',
-      `https://api.lovable.dev/profiles/${username}`,
-      `https://api.lovable.dev/profiles/@${username}`,
-      `https://api.lovable.dev/profiles/username/${username}`,
-      `https://api.lovable.dev/users/${username}`,
-      `https://api.lovable.dev/users/@${username}`,
-      `https://api.lovable.dev/profiles/${username}/activity`,
-      `https://api.lovable.dev/profiles/${username}/edits`,
-      `https://api.lovable.dev/profiles/${username}/stats`,
-      `https://api.lovable.dev/users/${username}/activity`,
-      `https://lovable.dev/api/profiles/${username}`,
-      `https://lovable.dev/api/users/${username}/activity`,
+      `https://api.lovable.dev/v1/profiles/${username}`,
+      `https://api.lovable.dev/v1/users/${username}`,
+      `https://api.lovable.dev/v1/profiles/${username}/activity`,
+      `https://api.lovable.dev/v1/users/${username}/activity`,
+      `https://api.lovable.dev/v2/profiles/${username}`,
+      `https://api.lovable.dev/public/profiles/${username}`,
+      `https://api.lovable.dev/public-profiles/${username}`,
+      `https://api.lovable.dev/user-profiles/${username}`,
+      `https://api.lovable.dev/profiles/by-username/${username}`,
+      ...(id
+        ? [
+            `https://api.lovable.dev/users/${id}`,
+            `https://api.lovable.dev/profiles/${id}`,
+            `https://api.lovable.dev/v1/users/${id}`,
+            `https://api.lovable.dev/users/${id}/activity`,
+            `https://api.lovable.dev/v1/users/${id}/activity`,
+            `https://api.lovable.dev/v1/users/${id}/edits`,
+          ]
+        : []),
     ];
     const results = [];
     for (const cu of candidates) {
@@ -123,7 +140,8 @@ export const GET: APIRoute = async ({ url, locals }) => {
   if (url.searchParams.get('mode') === 'discover') {
     const html = await fetchProfileHtml(target);
     if (html === null) return Response.json({ target, fetched: false });
-    const discovery = await discoverApiCandidates(html, 'https://lovable.dev', 45);
+    const skip = parseInt(url.searchParams.get('skip') ?? '0', 10) || 0;
+    const discovery = await discoverApiCandidates(html, 'https://lovable.dev', 45, skip);
     return Response.json({ target, fetched: true, ...discovery });
   }
 
