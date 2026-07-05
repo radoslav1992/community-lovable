@@ -1,0 +1,87 @@
+---
+import Base from '../layouts/Base.astro';
+import LovableBadge from '../components/LovableBadge.astro';
+import { initials, avatarGradient } from '../lib/format';
+
+const db = Astro.locals.runtime.env.DB;
+
+const members = (
+  await db
+    .prepare(
+      `SELECT id, username, name, lovable_username, lovable_edits,
+         (SELECT COUNT(*) + 1 FROM users ur
+          WHERE ur.lovable_profile_url IS NOT NULL AND ur.lovable_edits > u.lovable_edits) AS rank
+       FROM users u
+       WHERE lovable_profile_url IS NOT NULL AND blocked = 0
+       ORDER BY lovable_edits DESC NULLS LAST, username ASC
+       LIMIT 100`
+    )
+    .all<any>()
+).results;
+
+const description =
+  'Класация на членовете с потвърден Lovable профил, подредени по редакции в Lovable за последната година.';
+---
+<Base title="Класация — Българска Lovable Общност" description={description} canonicalPath="/klasatsiya">
+  <main>
+    <h1>Класация</h1>
+    <p class="page-sub">
+      Членове с потвърден Lovable профил, подредени по редакции в Lovable за последната година.
+      Свържи своя профил от <a href="/nastroyki">настройките</a>, за да се включиш.
+    </p>
+
+    <div class="card board">
+      {members.map((m: any) => (
+        <a href={`/u/${m.username}`} class="row">
+          <div class="rank">{m.lovable_edits === null ? '—' : m.rank}</div>
+          <div class="avatar b-avatar" style={`background:${avatarGradient(m.id)}`}>{initials(m.name)}</div>
+          <div class="who">
+            <div class="name">{m.name}</div>
+            <div class="handle">@{m.username} · lovable.dev/@{m.lovable_username}</div>
+          </div>
+          <div class="edits">
+            {m.lovable_edits === null ? (
+              <span class="pending">без данни</span>
+            ) : (
+              <>
+                <span class="num">{m.lovable_edits.toLocaleString('bg-BG')}</span>
+                <span class="lbl">редакции</span>
+              </>
+            )}
+          </div>
+          <LovableBadge verified={true} rank={m.lovable_edits === null ? null : m.rank} />
+        </a>
+      ))}
+      {members.length === 0 && (
+        <div class="row empty">
+          Все още няма класирани членове — бъди първият, който свърже Lovable профила си!
+        </div>
+      )}
+    </div>
+  </main>
+</Base>
+
+<style>
+  main { max-width: 760px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 28px; font-weight: 900; margin: 0; letter-spacing: -0.02em; }
+  .page-sub { margin: 0; font-size: 15px; color: var(--muted); }
+  .page-sub a { text-decoration: underline; }
+  .board { border-radius: 18px; overflow: hidden; padding: 0; }
+  .row {
+    display: flex; align-items: center; gap: 14px; padding: 14px 20px;
+    border-bottom: 1px solid var(--divider);
+  }
+  .row:last-child { border-bottom: none; }
+  .row:hover { background: var(--card-hover); }
+  .rank { width: 34px; font-weight: 900; font-size: 17px; color: var(--faint); text-align: center; flex-shrink: 0; }
+  .row:nth-child(1) .rank, .row:nth-child(2) .rank, .row:nth-child(3) .rank { color: var(--accent); }
+  .b-avatar { width: 40px; height: 40px; font-size: 13px; flex-shrink: 0; }
+  .who { flex: 1; min-width: 0; }
+  .name { font-weight: 800; font-size: 15px; }
+  .handle { font-size: 12px; color: var(--faint); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .edits { text-align: right; flex-shrink: 0; }
+  .num { font-weight: 800; font-size: 15px; display: block; }
+  .lbl { font-size: 11px; color: var(--faint); font-weight: 700; }
+  .pending { font-size: 12px; color: var(--faint); font-weight: 600; }
+  .empty { font-size: 14px; color: var(--faint); font-weight: 600; justify-content: center; }
+</style>

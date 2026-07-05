@@ -1,11 +1,13 @@
 ---
 import Base from '../layouts/Base.astro';
 import LovableBadge from '../components/LovableBadge.astro';
+import { lovableRank } from '../lib/lovable';
 import { initials, memberSince, timeAgo, USER_GRADIENT, ROLE_LABELS } from '../lib/format';
 
 const user = Astro.locals.user;
 if (!user) return Astro.redirect('/vhod');
 const db = Astro.locals.runtime.env.DB;
+const myRank = await lovableRank(db, user);
 
 const [statsRes, activityRes] = await db.batch([
   db
@@ -38,7 +40,7 @@ const activity = activityRes.results as any[];
     <div class="card head">
       <div class="avatar big" style={`background:${USER_GRADIENT}`}>{initials(user.name)}</div>
       <div class="who">
-        <h1>{user.name} <LovableBadge verified={!!user.lovable_profile_url} topPercent={user.lovable_top_percent} size="md" /></h1>
+        <h1>{user.name} <LovableBadge verified={!!user.lovable_profile_url} rank={myRank} size="md" /></h1>
         <div class="meta">
           @{user.username} · {memberSince(user.created_at)}
           {user.role !== 'member' && <> · <span class="role">{ROLE_LABELS[user.role]}</span></>}

@@ -1,12 +1,14 @@
 ---
 import Base from '../layouts/Base.astro';
 import LovableBadge from '../components/LovableBadge.astro';
+import { lovableRank } from '../lib/lovable';
 import { bgDate } from '../lib/format';
 
 const user = Astro.locals.user;
 if (!user) return Astro.redirect('/vhod');
 
 const db = Astro.locals.runtime.env.DB;
+const myRank = user.lovable_profile_url ? await lovableRank(db, user) : null;
 const claim = user.lovable_profile_url
   ? null
   : await db
@@ -114,17 +116,23 @@ const toggles = [
       {user.lovable_profile_url ? (
         <div class="lv-current">
           <div class="lv-row">
-            <LovableBadge verified={true} topPercent={user.lovable_top_percent} size="md" />
+            <LovableBadge verified={true} rank={myRank} size="md" />
             <div class="lv-info">
               Свързан с <a href={user.lovable_profile_url} target="_blank" rel="noopener nofollow">@{user.lovable_username}</a> ·
-              значките се синхронизират автоматично{user.lovable_synced_at && ` · обновено на ${bgDate(user.lovable_synced_at)}`}
+              синхронизира се автоматично{user.lovable_synced_at && ` · обновено на ${bgDate(user.lovable_synced_at)}`}
             </div>
           </div>
-          {lovableBadges.length > 0 && (
-            <ul class="lv-badges">
-              {lovableBadges.map((b) => <li>{b}</li>)}
-            </ul>
-          )}
+          <ul class="lv-badges">
+            {user.lovable_edits !== null ? (
+              <li>
+                {user.lovable_edits.toLocaleString('bg-BG')} редакции за последната година
+                {myRank && <> · <a href="/klasatsiya">№{myRank} в класацията</a></>}
+              </li>
+            ) : (
+              <li>Все още няма данни за редакции — пробвай „Обнови сега“.</li>
+            )}
+            {lovableBadges.map((b) => <li>{b}</li>)}
+          </ul>
           <div class="lv-actions">
             <form method="post" action="/api/lovable/sync">
               <button type="submit" class="btn btn-dark">Обнови сега</button>
@@ -155,9 +163,9 @@ const toggles = [
       ) : (
         <div class="lv-setup">
           <p class="lv-desc">
-            Свържи публичния си Lovable профил (lovable.dev/@потребител), за да покажеш значките си — например
-            „Top 10% of Lovable users“ — до името си в общността. Всеки Lovable профил може да се свърже само с
-            един акаунт, а собствеността се доказва с код в биото.
+            Свържи публичния си Lovable профил (lovable.dev/@потребител), за да получиш значка до името си и
+            място в <a href="/klasatsiya">класацията</a> по редакции. Всеки Lovable профил може да се свърже
+            само с един акаунт, а собствеността се доказва с код в биото.
           </p>
           <form method="post" action="/api/lovable/claim" class="lv-inline">
             <input class="input" name="profile" placeholder="@потребител или lovable.dev/@потребител" required />

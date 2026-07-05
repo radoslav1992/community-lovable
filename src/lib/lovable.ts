@@ -53,12 +53,13 @@ export function generateClaimCode(): string {
 export interface ParsedProfile {
   topPercent: number | null;
   badges: string[];
+  edits: number | null;
 }
 
 /**
- * Extracts public badges from a profile page. Currently recognizes the
- * "Top N% of Lovable users" badge; the pattern list is meant to grow as
- * Lovable ships more public skills/badges.
+ * Extracts public data from a profile page: the yearly edit count from the
+ * activity panel ("Total Edits 2,869" / "2869 edits on … in the last year"),
+ * and any "Top N% of Lovable users" badge should Lovable ever publish it.
  */
 export function parseProfileBadges(html: string): ParsedProfile {
   let topPercent: number | null = null;
@@ -68,7 +69,22 @@ export function parseProfileBadges(html: string): ParsedProfile {
   }
   const badges: string[] = [];
   if (topPercent !== null) badges.push(`Top ${topPercent}% of Lovable users`);
-  return { topPercent, badges };
+
+  // The stats are split across tags — compare against the tag-stripped text.
+  const text = html.replace(/<[^>]+>/g, ' ');
+  let edits: number | null = null;
+  const candidates = [
+    ...text.matchAll(/total\s*edits\D{0,20}?(\d[\d,]*)/gi),
+    // "2869 edits on … in the last year"; the lookbehind skips the decimal
+    // "7.9 edits" daily average.
+    ...text.matchAll(/(?<![\d.,])(\d[\d,]*)\s+edits\s+on\b/gi),
+  ];
+  for (const m of candidates) {
+    const n = parseInt(m[1]!.replace(/,/g, ''), 10);
+    if (Number.isFinite(n) && (edits === null || n > edits)) edits = n;
+  }
+
+  return { topPercent, badges, edits };
 }
 
 /** Fetches a profile page's HTML, or null when unreachable/private. */
@@ -102,14 +118,41 @@ export async function resyncBadges(db: D1Database, userId: number, profileUrl: s
     const parsed = parseProfileBadges(html);
     await db
       .prepare(
-        `UPDATE users SET lovable_top_percent = ?, lovable_badges = ?, lovable_synced_at = datetime('now')
-         WHERE id = ?`
+        `UPDATE users SET lovable_top_percent = ?, lovable_badges = ?, lovable_edits = ?,
+           lovable_synced_at = datetime('now') WHERE id = ?`
       )
-      .bind(parsed.topPercent, JSON.stringify(parsed.badges), userId)
+      .bind(parsed.topPercent, JSON.stringify(parsed.badges), parsed.edits, userId)
       .run();
   } else {
     await db.prepare("UPDATE users SET lovable_synced_at = datetime('now') WHERE id = ?").bind(userId).run();
   }
+}
+
+/**
+ * SQL fragment for author queries joining `users u`: whether the author has a
+ * verified Lovable profile, and their community rank by yearly edits (1 =
+ * most edits among verified members; NULL when unverified or edits unknown).
+ */
+export const AUTHOR_LOVABLE_SQL = `
+  u.lovable_profile_url IS NOT NULL AS author_lovable,
+  CASE WHEN u.lovable_profile_url IS NULL OR u.lovable_edits IS NULL THEN NULL ELSE
+    (SELECT COUNT(*) + 1 FROM users ur
+     WHERE ur.lovable_profile_url IS NOT NULL AND ur.lovable_edits > u.lovable_edits)
+  END AS author_lovable_rank`;
+
+/** Community rank for a single member (see AUTHOR_LOVABLE_SQL). */
+export async function lovableRank(
+  db: D1Database,
+  person: { lovable_profile_url: string | null; lovable_edits: number | null }
+): Promise<number | null> {
+  if (!person.lovable_profile_url || person.lovable_edits === null) return null;
+  const row = await db
+    .prepare(
+      'SELECT COUNT(*) + 1 AS r FROM users WHERE lovable_profile_url IS NOT NULL AND lovable_edits > ?'
+    )
+    .bind(person.lovable_edits)
+    .first<{ r: number }>();
+  return row?.r ?? null;
 }
 
 interface BadgeHolder {

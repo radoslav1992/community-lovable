@@ -17,10 +17,10 @@ export const POST: APIRoute = async ({ locals, redirect }) => {
   const parsed = parseProfileBadges(html);
   await db
     .prepare(
-      `UPDATE users SET lovable_top_percent = ?, lovable_badges = ?, lovable_synced_at = datetime('now')
-       WHERE id = ?`
+      `UPDATE users SET lovable_top_percent = ?, lovable_badges = ?, lovable_edits = ?,
+         lovable_synced_at = datetime('now') WHERE id = ?`
     )
-    .bind(parsed.topPercent, JSON.stringify(parsed.badges), user.id)
+    .bind(parsed.topPercent, JSON.stringify(parsed.badges), parsed.edits, user.id)
     .run();
   return redirect('/nastroyki?lovable=ok', 303);
 };
