@@ -100,7 +100,11 @@ export function parseProfileBadges(html: string): ParsedProfile {
 
   let edits: number | null = null;
   const candidates = [
-    ...text.matchAll(/total[\s_]*edits\W{0,20}?(\d[\d,]*)/gi),
+    // Rendered DOM: label and value adjacent after tag-stripping.
+    ...text.matchAll(/total[\s_]*edits\D{0,20}?(\d[\d,]*)/gi),
+    // Flight payload: the value is its own children:"…" string node near
+    // the label (a small gap would match React keys like "1" instead).
+    ...text.matchAll(/total[\s_]*edits[\s\S]{0,200}?children":"(\d[\d,]*)"/gi),
     ...text.matchAll(/"totalEdits"\s*[:,]\s*"?(\d[\d,]*)/gi),
     // "2869 edits on … in the last year"; the lookbehind skips the decimal
     // "7.9 edits" daily average.
@@ -111,12 +115,20 @@ export function parseProfileBadges(html: string): ParsedProfile {
     if (Number.isFinite(n) && (edits === null || n > edits)) edits = n;
   }
 
+  // Unit-anchored patterns ("229 days", "7.9 edits") stay unambiguous even
+  // across flight framing, since each value+unit is a single string node.
   const stats: LovableStats = {};
   const followers = firstInt(text, [/(\d[\d,]*)\s*followers/i, /"followers?(?:Count)?"\s*[:,]\s*"?(\d[\d,]*)/i]);
   const following = firstInt(text, [/(\d[\d,]*)\s*following/i, /"following(?:Count)?"\s*[:,]\s*"?(\d[\d,]*)/i]);
-  const daysActive = firstInt(text, [/days\s*active\W{0,20}?(\d[\d,]*)/i, /"daysActive"\s*[:,]\s*"?(\d[\d,]*)/i]);
-  const streakDays = firstInt(text, [/current\s*streak\W{0,20}?(\d[\d,]*)/i, /"(?:currentStreak|streak)"\s*[:,]\s*"?(\d[\d,]*)/i]);
-  const dailyAvgM = text.match(/daily\s*average\W{0,20}?(\d[\d,]*(?:\.\d+)?)/i);
+  const daysActive = firstInt(text, [
+    /days\s*active[\s\S]{0,160}?(\d[\d,]*)\s*days/i,
+    /"daysActive"\s*[:,]\s*"?(\d[\d,]*)/i,
+  ]);
+  const streakDays = firstInt(text, [
+    /current\s*streak[\s\S]{0,160}?(\d[\d,]*)\s*days/i,
+    /"(?:currentStreak|streak)"\s*[:,]\s*"?(\d[\d,]*)/i,
+  ]);
+  const dailyAvgM = text.match(/daily\s*average[\s\S]{0,160}?(\d[\d,]*(?:\.\d+)?)\s*edits/i);
   if (followers !== null) stats.followers = followers;
   if (following !== null) stats.following = following;
   if (daysActive !== null) stats.daysActive = daysActive;
@@ -129,6 +141,9 @@ export function parseProfileBadges(html: string): ParsedProfile {
   return { topPercent, badges, edits, stats };
 }
 
+const BROWSER_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
+
 /** Fetches a profile page's HTML, or null when unreachable/private. */
 export async function fetchProfileHtml(url: string): Promise<string | null> {
   try {
@@ -136,8 +151,7 @@ export async function fetchProfileHtml(url: string): Promise<string | null> {
       redirect: 'follow',
       signal: AbortSignal.timeout(10_000),
       headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+        'User-Agent': BROWSER_UA,
         Accept: 'text/html,application/xhtml+xml',
         'Accept-Language': 'en,bg;q=0.8',
       },
@@ -150,14 +164,53 @@ export async function fetchProfileHtml(url: string): Promise<string | null> {
 }
 
 /**
+ * Fetches the page's server-component (flight) payload — the channel that
+ * can carry data deferred out of the initial HTML. Null when unavailable.
+ */
+export async function fetchProfileRsc(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(10_000),
+      headers: {
+        'User-Agent': BROWSER_UA,
+        Accept: 'text/x-component, */*',
+        RSC: '1',
+      },
+    });
+    if (!res.ok) return null;
+    return (await res.text()).slice(0, 2_000_000);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetches and parses a profile: the HTML page first, and when the activity
+ * stats are missing from it (they are client-loaded), the flight payload as
+ * a fallback. `html` is null only when the page itself was unreachable.
+ */
+export async function fetchAndParseProfile(
+  url: string
+): Promise<{ html: string | null; parsed: ParsedProfile | null }> {
+  const html = await fetchProfileHtml(url);
+  if (html === null) return { html: null, parsed: null };
+  let parsed = parseProfileBadges(html);
+  if (parsed.edits === null) {
+    const rsc = await fetchProfileRsc(url);
+    if (rsc !== null) parsed = parseProfileBadges(html + '\n' + rsc);
+  }
+  return { html, parsed };
+}
+
+/**
  * Re-fetches a verified profile and updates the stored badges. Keeps the
  * previous badges when the page can't be fetched (e.g. temporarily private) —
  * never downgrades on a transient failure — but always records the attempt.
  */
 export async function resyncBadges(db: D1Database, userId: number, profileUrl: string): Promise<void> {
-  const html = await fetchProfileHtml(profileUrl);
-  if (html !== null) {
-    const parsed = parseProfileBadges(html);
+  const { html, parsed } = await fetchAndParseProfile(profileUrl);
+  if (html !== null && parsed !== null) {
     await db
       .prepare(
         `UPDATE users SET lovable_top_percent = ?, lovable_badges = ?, lovable_edits = ?,

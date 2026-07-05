@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { fetchProfileHtml, parseProfileBadges } from '../../../lib/lovable';
+import { fetchAndParseProfile } from '../../../lib/lovable';
 
 /** Step 2: fetch the claimed profile, look for the bio code, and verify. */
 export const POST: APIRoute = async ({ locals, redirect }) => {
@@ -24,11 +24,9 @@ export const POST: APIRoute = async ({ locals, redirect }) => {
     .first();
   if (taken) return redirect('/nastroyki?greshka=lovable-profil-zaet', 303);
 
-  const html = await fetchProfileHtml(claim.profile_url);
-  if (html === null) return redirect('/nastroyki?greshka=lovable-profil-nedostapen', 303);
+  const { html, parsed } = await fetchAndParseProfile(claim.profile_url);
+  if (html === null || parsed === null) return redirect('/nastroyki?greshka=lovable-profil-nedostapen', 303);
   if (!html.includes(claim.code)) return redirect('/nastroyki?greshka=lovable-kod-lipsva', 303);
-
-  const parsed = parseProfileBadges(html);
   await db.batch([
     db
       .prepare(

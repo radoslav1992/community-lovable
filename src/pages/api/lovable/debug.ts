@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { fetchProfileHtml, parseProfileBadges } from '../../../lib/lovable';
+import { fetchProfileHtml, fetchProfileRsc, parseProfileBadges } from '../../../lib/lovable';
 
 const FETCH_HEADERS = {
   'User-Agent':
@@ -23,7 +23,8 @@ async function discoverApiCandidates(html: string, origin: string, maxChunks: nu
   ].slice(0, maxChunks);
 
   const apiPaths = new Set<string>();
-  const keywordHits: Record<string, string[]> = {};
+  const externalUrls = new Set<string>();
+  const statChunks: { chunk: string; excerpts: string[]; urls: string[] }[] = [];
   const scanned: string[] = [];
 
   for (const cu of chunkUrls) {
@@ -33,20 +34,39 @@ async function discoverApiCandidates(html: string, origin: string, maxChunks: nu
       const js = (await res.text()).slice(0, 2_000_000);
       scanned.push(cu.slice(cu.lastIndexOf('/') + 1));
       for (const m of js.matchAll(/["'`](\/(?:api|trpc)\/[^"'`\s\\]{2,140})["'`]/g)) apiPaths.add(m[1]!);
-      for (const m of js.matchAll(/["'`](https:\/\/[a-z0-9.-]*lovable[a-z0-9.-]*\/[^"'`\s\\]{2,140})["'`]/gi))
-        apiPaths.add(m[1]!);
-      for (const kw of ['totalEdits', 'total_edits', 'daysActive', 'days_active', 'editCount', 'activity']) {
-        for (const m of js.matchAll(new RegExp(kw, 'g'))) {
-          (keywordHits[kw] ??= []).push(js.slice(Math.max(0, m.index! - 120), m.index! + 160));
-          if (keywordHits[kw]!.length >= 3) break;
+      for (const m of js.matchAll(/["'`](https:\/\/[a-z0-9.-]+\/[^"'`\s\\]{2,140})["'`]/gi)) {
+        if (/api|graphql|trpc|supabase|firestore|functions|edge|rpc/i.test(m[1]!)) externalUrls.add(m[1]!);
+      }
+      // A chunk mentioning the stat labels is (or feeds) the activity panel —
+      // report its fetch targets and the code around the labels.
+      const statRe = /total\s?_?edits|Total Edits|days\s?_?active|Days Active|editCount|currentStreak/gi;
+      if (statRe.test(js)) {
+        statRe.lastIndex = 0;
+        const excerpts: string[] = [];
+        for (const m of js.matchAll(statRe)) {
+          excerpts.push(js.slice(Math.max(0, m.index! - 200), m.index! + 260));
+          if (excerpts.length >= 4) break;
         }
+        const urls = [
+          ...new Set(
+            [...js.matchAll(/["'`]((?:https:\/\/[a-z0-9.-]+)?\/?[^"'`\s\\]{0,20}(?:api|trpc|graphql|rpc)[^"'`\s\\]{0,140})["'`]/gi)].map(
+              (m) => m[1]!
+            )
+          ),
+        ].slice(0, 20);
+        statChunks.push({ chunk: cu.slice(cu.lastIndexOf('/') + 1), excerpts, urls });
       }
     } catch {
       // unreachable chunk — skip
     }
   }
 
-  return { chunksScanned: scanned.length, chunkNames: scanned, apiPaths: [...apiPaths].sort(), keywordHits };
+  return {
+    chunksScanned: scanned.length,
+    apiPaths: [...apiPaths].sort(),
+    externalUrls: [...externalUrls].sort().slice(0, 40),
+    statChunks,
+  };
 }
 
 /**
@@ -61,15 +81,72 @@ export const GET: APIRoute = async ({ url, locals }) => {
   if (!user || user.role !== 'admin') return new Response(null, { status: 404 });
 
   const target = url.searchParams.get('u') || user.lovable_profile_url;
-  if (!target || !/^https:\/\/lovable\.dev\//.test(target)) {
+  if (!target || !/^https:\/\/([a-z0-9-]+\.)?lovable\.dev\//.test(target)) {
     return Response.json({ error: 'no profile url' }, { status: 400 });
+  }
+
+  // The profile page hydrates from api.lovable.dev (PublicProfileBody.json
+  // schema); the activity panel data is fetched client-side. Probe the
+  // plausible endpoint shapes and report what each returns.
+  if (url.searchParams.get('mode') === 'api') {
+    const username = target.match(/\/@([^/]+)/)?.[1] ?? user.lovable_username ?? '';
+    const candidates = [
+      'https://api.lovable.dev/PublicProfileBody.json',
+      `https://api.lovable.dev/profiles/${username}`,
+      `https://api.lovable.dev/profiles/@${username}`,
+      `https://api.lovable.dev/profiles/username/${username}`,
+      `https://api.lovable.dev/users/${username}`,
+      `https://api.lovable.dev/users/@${username}`,
+      `https://api.lovable.dev/profiles/${username}/activity`,
+      `https://api.lovable.dev/profiles/${username}/edits`,
+      `https://api.lovable.dev/profiles/${username}/stats`,
+      `https://api.lovable.dev/users/${username}/activity`,
+      `https://lovable.dev/api/profiles/${username}`,
+      `https://lovable.dev/api/users/${username}/activity`,
+    ];
+    const results = [];
+    for (const cu of candidates) {
+      try {
+        const res = await fetch(cu, {
+          signal: AbortSignal.timeout(6_000),
+          headers: { ...FETCH_HEADERS, Accept: 'application/json, */*' },
+        });
+        const body = (await res.text()).slice(0, 400);
+        results.push({ url: cu, status: res.status, type: res.headers.get('content-type'), snippet: body });
+      } catch (e) {
+        results.push({ url: cu, error: String(e).slice(0, 120) });
+      }
+    }
+    return Response.json({ username, results });
   }
 
   if (url.searchParams.get('mode') === 'discover') {
     const html = await fetchProfileHtml(target);
     if (html === null) return Response.json({ target, fetched: false });
-    const discovery = await discoverApiCandidates(html, 'https://lovable.dev', 25);
+    const discovery = await discoverApiCandidates(html, 'https://lovable.dev', 45);
     return Response.json({ target, fetched: true, ...discovery });
+  }
+
+  if (url.searchParams.get('mode') === 'rsc') {
+    const rsc = await fetchProfileRsc(target);
+    if (rsc === null) return Response.json({ target, fetched: false, note: 'rsc fetch failed' });
+    const markers: Record<string, number> = {};
+    for (const m of ['Total Edits', 'totalEdits', 'edits', 'Days Active', 'daysActive', 'followers'])
+      markers[m] = rsc.split(m).length - 1;
+    const excerpts: Record<string, string> = {};
+    for (const m of ['Total Edits', 'totalEdits', 'Days Active']) {
+      const i = rsc.indexOf(m);
+      if (i >= 0) excerpts[m] = rsc.slice(Math.max(0, i - 300), i + 400);
+    }
+    return Response.json({
+      target,
+      fetched: true,
+      length: rsc.length,
+      markers,
+      parsed: parseProfileBadges(rsc),
+      head: rsc.slice(0, 400),
+      excerpts,
+    });
   }
 
   const html = await fetchProfileHtml(target);
