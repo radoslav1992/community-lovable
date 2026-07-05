@@ -1,31 +1,43 @@
 import type { APIRoute } from 'astro';
-import { fetchBadgeLevel, normalizeBadgeUrl } from '../../../lib/lovable';
+import { fetchProfileHtml, parseProfileBadges } from '../../../lib/lovable';
 
-export const POST: APIRoute = async ({ request, locals, redirect }) => {
+/** Step 2: fetch the claimed profile, look for the bio code, and verify. */
+export const POST: APIRoute = async ({ locals, redirect }) => {
   const user = locals.user;
   if (!user) return redirect('/vhod', 303);
 
   const db = locals.runtime.env.DB;
-  const form = await request.formData();
-  const url = normalizeBadgeUrl(String(form.get('url') ?? ''));
-  if (!url) return redirect('/nastroyki?greshka=lovable-url-nevaliden', 303);
-
-  const taken = await db
-    .prepare('SELECT 1 FROM users WHERE lovable_badge_url = ? AND id != ?')
-    .bind(url, user.id)
-    .first();
-  if (taken) return redirect('/nastroyki?greshka=lovable-url-zaet', 303);
-
-  const level = await fetchBadgeLevel(url);
-  if (!level) return redirect('/nastroyki?greshka=lovable-ne-otkrit', 303);
-
-  await db
+  const claim = await db
     .prepare(
-      `UPDATE users SET lovable_level = ?, lovable_badge_url = ?, lovable_verified_via = 'url',
-         lovable_synced_at = datetime('now') WHERE id = ?`
+      `SELECT profile_url, username, code FROM lovable_profile_claims
+       WHERE user_id = ? AND expires_at > datetime('now')`
     )
-    .bind(level, url, user.id)
-    .run();
+    .bind(user.id)
+    .first<{ profile_url: string; username: string; code: string }>();
+  if (!claim) return redirect('/nastroyki?greshka=lovable-nyama-zayavka', 303);
+
+  // Re-check uniqueness at verification time (someone may have verified the
+  // same profile while this claim was pending).
+  const taken = await db
+    .prepare('SELECT 1 FROM users WHERE lovable_profile_url = ? AND id != ?')
+    .bind(claim.profile_url, user.id)
+    .first();
+  if (taken) return redirect('/nastroyki?greshka=lovable-profil-zaet', 303);
+
+  const html = await fetchProfileHtml(claim.profile_url);
+  if (html === null) return redirect('/nastroyki?greshka=lovable-profil-nedostapen', 303);
+  if (!html.includes(claim.code)) return redirect('/nastroyki?greshka=lovable-kod-lipsva', 303);
+
+  const parsed = parseProfileBadges(html);
+  await db.batch([
+    db
+      .prepare(
+        `UPDATE users SET lovable_profile_url = ?, lovable_username = ?, lovable_top_percent = ?,
+           lovable_badges = ?, lovable_synced_at = datetime('now') WHERE id = ?`
+      )
+      .bind(claim.profile_url, claim.username, parsed.topPercent, JSON.stringify(parsed.badges), user.id),
+    db.prepare('DELETE FROM lovable_profile_claims WHERE user_id = ?').bind(user.id),
+  ]);
 
   return redirect('/nastroyki?lovable=ok', 303);
 };
