@@ -33,9 +33,18 @@ export const POST: APIRoute = async ({ locals, redirect }) => {
     db
       .prepare(
         `UPDATE users SET lovable_profile_url = ?, lovable_username = ?, lovable_top_percent = ?,
-           lovable_badges = ?, lovable_edits = ?, lovable_synced_at = datetime('now') WHERE id = ?`
+           lovable_badges = ?, lovable_edits = ?, lovable_stats = ?, lovable_synced_at = datetime('now')
+         WHERE id = ?`
       )
-      .bind(claim.profile_url, claim.username, parsed.topPercent, JSON.stringify(parsed.badges), parsed.edits, user.id),
+      .bind(
+        claim.profile_url,
+        claim.username,
+        parsed.topPercent,
+        JSON.stringify(parsed.badges),
+        parsed.edits,
+        JSON.stringify(parsed.stats),
+        user.id
+      ),
     db.prepare('DELETE FROM lovable_profile_claims WHERE user_id = ?').bind(user.id),
   ]);
 

@@ -50,16 +50,38 @@ export function generateClaimCode(): string {
   return `CLBG-${hex.toUpperCase()}`;
 }
 
+export interface LovableStats {
+  followers?: number;
+  following?: number;
+  daysActive?: number;
+  streakDays?: number;
+  dailyAvg?: number;
+}
+
 export interface ParsedProfile {
   topPercent: number | null;
   badges: string[];
   edits: number | null;
+  stats: LovableStats;
+}
+
+function firstInt(text: string, patterns: RegExp[]): number | null {
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const n = parseInt(m[1]!.replace(/,/g, ''), 10);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  return null;
 }
 
 /**
- * Extracts public data from a profile page: the yearly edit count from the
- * activity panel ("Total Edits 2,869" / "2869 edits on … in the last year"),
- * and any "Top N% of Lovable users" badge should Lovable ever publish it.
+ * Extracts public data from a profile page: the yearly edit count and
+ * activity stats from the activity panel, plus any "Top N% of Lovable users"
+ * badge should Lovable ever publish it. Works on both rendered DOM and
+ * framework payloads (JSON-escaped strings inside scripts), so a
+ * server-rendered page and a hydration payload both parse.
  */
 export function parseProfileBadges(html: string): ParsedProfile {
   let topPercent: number | null = null;
@@ -70,11 +92,16 @@ export function parseProfileBadges(html: string): ParsedProfile {
   const badges: string[] = [];
   if (topPercent !== null) badges.push(`Top ${topPercent}% of Lovable users`);
 
-  // The stats are split across tags — compare against the tag-stripped text.
-  const text = html.replace(/<[^>]+>/g, ' ');
+  // Values are split across tags (or across JSON string chunks in a script
+  // payload) — unescape, then strip tags, then match with small gaps.
+  const text = html
+    .replace(/\\["nrt]/g, (s) => (s === '\\"' ? '"' : ' '))
+    .replace(/<[^>]+>/g, ' ');
+
   let edits: number | null = null;
   const candidates = [
-    ...text.matchAll(/total\s*edits\D{0,20}?(\d[\d,]*)/gi),
+    ...text.matchAll(/total[\s_]*edits\W{0,20}?(\d[\d,]*)/gi),
+    ...text.matchAll(/"totalEdits"\s*[:,]\s*"?(\d[\d,]*)/gi),
     // "2869 edits on … in the last year"; the lookbehind skips the decimal
     // "7.9 edits" daily average.
     ...text.matchAll(/(?<![\d.,])(\d[\d,]*)\s+edits\s+on\b/gi),
@@ -84,7 +111,22 @@ export function parseProfileBadges(html: string): ParsedProfile {
     if (Number.isFinite(n) && (edits === null || n > edits)) edits = n;
   }
 
-  return { topPercent, badges, edits };
+  const stats: LovableStats = {};
+  const followers = firstInt(text, [/(\d[\d,]*)\s*followers/i, /"followers?(?:Count)?"\s*[:,]\s*"?(\d[\d,]*)/i]);
+  const following = firstInt(text, [/(\d[\d,]*)\s*following/i, /"following(?:Count)?"\s*[:,]\s*"?(\d[\d,]*)/i]);
+  const daysActive = firstInt(text, [/days\s*active\W{0,20}?(\d[\d,]*)/i, /"daysActive"\s*[:,]\s*"?(\d[\d,]*)/i]);
+  const streakDays = firstInt(text, [/current\s*streak\W{0,20}?(\d[\d,]*)/i, /"(?:currentStreak|streak)"\s*[:,]\s*"?(\d[\d,]*)/i]);
+  const dailyAvgM = text.match(/daily\s*average\W{0,20}?(\d[\d,]*(?:\.\d+)?)/i);
+  if (followers !== null) stats.followers = followers;
+  if (following !== null) stats.following = following;
+  if (daysActive !== null) stats.daysActive = daysActive;
+  if (streakDays !== null) stats.streakDays = streakDays;
+  if (dailyAvgM) {
+    const avg = parseFloat(dailyAvgM[1]!.replace(/,/g, ''));
+    if (Number.isFinite(avg)) stats.dailyAvg = avg;
+  }
+
+  return { topPercent, badges, edits, stats };
 }
 
 /** Fetches a profile page's HTML, or null when unreachable/private. */
@@ -119,9 +161,9 @@ export async function resyncBadges(db: D1Database, userId: number, profileUrl: s
     await db
       .prepare(
         `UPDATE users SET lovable_top_percent = ?, lovable_badges = ?, lovable_edits = ?,
-           lovable_synced_at = datetime('now') WHERE id = ?`
+           lovable_stats = ?, lovable_synced_at = datetime('now') WHERE id = ?`
       )
-      .bind(parsed.topPercent, JSON.stringify(parsed.badges), parsed.edits, userId)
+      .bind(parsed.topPercent, JSON.stringify(parsed.badges), parsed.edits, JSON.stringify(parsed.stats), userId)
       .run();
   } else {
     await db.prepare("UPDATE users SET lovable_synced_at = datetime('now') WHERE id = ?").bind(userId).run();

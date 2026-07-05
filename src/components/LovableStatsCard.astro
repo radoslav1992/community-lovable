@@ -1,0 +1,55 @@
+---
+import type { LovableStats } from '../lib/lovable';
+
+interface Props {
+  profileUrl: string;
+  lovableUsername: string;
+  edits: number | null;
+  statsJson: string | null;
+  rank: number | null;
+}
+
+const { profileUrl, lovableUsername, edits, statsJson, rank } = Astro.props;
+let stats: LovableStats = {};
+try {
+  stats = JSON.parse(statsJson || '{}');
+} catch {}
+
+const items: { num: string; lbl: string }[] = [];
+if (edits !== null) items.push({ num: edits.toLocaleString('bg-BG'), lbl: 'редакции / год.' });
+if (stats.daysActive !== undefined) items.push({ num: stats.daysActive.toLocaleString('bg-BG'), lbl: 'активни дни' });
+if (stats.streakDays !== undefined) items.push({ num: stats.streakDays.toLocaleString('bg-BG'), lbl: 'дни поредица' });
+if (stats.dailyAvg !== undefined) items.push({ num: stats.dailyAvg.toLocaleString('bg-BG'), lbl: 'редакции / ден' });
+if (stats.followers !== undefined) items.push({ num: stats.followers.toLocaleString('bg-BG'), lbl: 'последователи' });
+---
+<div class="card lv-card">
+  <div class="lv-head">
+    <span class="lv-title">⚡ LOVABLE АКТИВНОСТ</span>
+    <a href={profileUrl} target="_blank" rel="noopener nofollow" class="lv-handle">lovable.dev/@{lovableUsername} ↗</a>
+    {rank && <a href="/klasatsiya" class="lv-rank">№{rank} в класацията</a>}
+  </div>
+  {items.length > 0 ? (
+    <div class="lv-stats">
+      {items.map((it) => (
+        <div class="lv-stat">
+          <div class="num">{it.num}</div>
+          <div class="lbl">{it.lbl}</div>
+        </div>
+      ))}
+    </div>
+  ) : (
+    <div class="lv-none">Статистиките от Lovable профила още не са синхронизирани.</div>
+  )}
+</div>
+
+<style>
+  .lv-card { border-radius: 18px; padding: 20px 24px; }
+  .lv-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+  .lv-title { font-size: 13px; font-weight: 800; letter-spacing: 0.06em; color: var(--muted); }
+  .lv-handle { font-size: 13px; font-weight: 700; color: var(--accent); }
+  .lv-rank { font-size: 13px; font-weight: 700; text-decoration: underline; }
+  .lv-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+  .num { font-weight: 800; font-size: 20px; }
+  .lbl { font-size: 12px; color: var(--faint); font-weight: 700; }
+  .lv-none { font-size: 13px; color: var(--faint); font-weight: 600; }
+</style>

@@ -1,6 +1,7 @@
 ---
 import Base from '../../layouts/Base.astro';
 import LovableBadge from '../../components/LovableBadge.astro';
+import LovableStatsCard from '../../components/LovableStatsCard.astro';
 import { initials, memberSince, timeAgo, avatarGradient, ROLE_LABELS } from '../../lib/format';
 import { lovableRank, maybeResyncBadges } from '../../lib/lovable';
 
@@ -12,7 +13,7 @@ const person = await db
   .prepare(
     `SELECT id, username, name, bio, role, blocked, public_profile, created_at,
        lovable_profile_url, lovable_username, lovable_top_percent, lovable_badges,
-       lovable_edits, lovable_synced_at
+       lovable_edits, lovable_stats, lovable_synced_at
      FROM users WHERE username = ?`
   )
   .bind(username)
@@ -79,6 +80,16 @@ const posts = (postsRes?.results as any[]) ?? [];
       <div class="notice notice-pink">
         Този профил е видим само за членове. <a href="/vhod" class="login-link">Влез</a>, за да го разгледаш.
       </div>
+    )}
+
+    {visible && person.lovable_profile_url && (
+      <LovableStatsCard
+        profileUrl={person.lovable_profile_url}
+        lovableUsername={person.lovable_username}
+        edits={person.lovable_edits}
+        statsJson={person.lovable_stats}
+        rank={personRank}
+      />
     )}
 
     {visible && (
