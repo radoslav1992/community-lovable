@@ -1,25 +1,39 @@
 ---
 import Base from '../layouts/Base.astro';
-import { initials, avatarGradient, ROLE_LABELS, ROLE_STYLES } from '../lib/format';
+import { initials, avatarGradient, ROLE_LABELS, ROLE_STYLES, bgDate } from '../lib/format';
 
 const user = Astro.locals.user;
 if (!user) return Astro.redirect('/vhod');
 if (user.role !== 'admin') return Astro.redirect('/');
 
 const db = Astro.locals.runtime.env.DB;
-const [usersRes, reportsRes] = await db.batch([
+const [usersRes, reportsRes, eventsRes, newsRes] = await db.batch([
   db.prepare('SELECT id, name, email, role, blocked FROM users ORDER BY created_at ASC LIMIT 100'),
   db.prepare(`SELECT id, title, reason, reporter_name FROM reports WHERE status = 'pending' ORDER BY created_at ASC`),
+  db.prepare(`SELECT e.id, e.title, e.starts_at, e.is_live, e.place, e.description,
+    (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = e.id) AS rsvp_count
+    FROM events e ORDER BY e.starts_at DESC LIMIT 100`),
+  db.prepare('SELECT id, slug, title, excerpt, body, featured, published_at FROM news ORDER BY published_at DESC LIMIT 100'),
 ]);
 const users = usersRes.results as any[];
 const reports = reportsRes.results as any[];
+const events = eventsRes.results as any[];
+const news = newsRes.results as any[];
+
+const error = Astro.url.searchParams.get('greshka');
+const ERRORS: Record<string, string> = {
+  sabitie: 'Събитието трябва да има заглавие и валидна дата.',
+  novina: 'Новината трябва да има заглавие и текст.',
+};
 ---
 <Base title="Админ панел — Българска Lovable Общност" description="Управление на общността." noindex={true}>
   <main>
     <div>
       <h1>Админ панел</h1>
-      <p class="sub">Управление на потребители и докладвано съдържание.</p>
+      <p class="sub">Управление на потребители, докладвано съдържание, събития и новини.</p>
     </div>
+
+    {error && <div class="notice notice-error">{ERRORS[error] ?? 'Нещо се обърка.'}</div>}
 
     <section class="card">
       <div class="sec-head">ПОТРЕБИТЕЛИ</div>
@@ -63,6 +77,110 @@ const reports = reportsRes.results as any[];
         </div>
       ))}
     </section>
+
+    <section class="card" id="sabitiya">
+      <div class="sec-head">СЪБИТИЯ</div>
+
+      <details class="editor">
+        <summary>+ Ново събитие</summary>
+        <form method="post" action="/api/admin/event" class="ed-form">
+          <input type="hidden" name="action" value="create" />
+          <label>Заглавие<input class="input" name="title" maxlength="200" required /></label>
+          <div class="ed-row">
+            <label>Дата<input class="input" type="date" name="date" required /></label>
+            <label>Час<input class="input" type="time" name="time" value="18:30" /></label>
+            <label>Формат
+              <select class="input" name="is_live">
+                <option value="1">На живо</option>
+                <option value="0">Онлайн</option>
+              </select>
+            </label>
+          </div>
+          <label>Място<input class="input" name="place" maxlength="200" placeholder="📍 betahaus, София · 18:30 – 21:00" /></label>
+          <label>Описание<textarea class="input" name="description" rows="3" maxlength="2000"></textarea></label>
+          <button type="submit" class="btn btn-dark ed-submit">Създай събитие</button>
+        </form>
+      </details>
+
+      {events.map((ev: any) => (
+        <div class="item-row">
+          <div class="item-main">
+            <div class="item-title">{ev.title} {ev.is_live ? '' : '· онлайн'}</div>
+            <div class="item-meta">{bgDate(ev.starts_at)} · {ev.starts_at.slice(11, 16)} · {ev.rsvp_count} записани</div>
+          </div>
+          <details class="editor inline">
+            <summary class="edit-link">Редактирай</summary>
+            <form method="post" action="/api/admin/event" class="ed-form">
+              <input type="hidden" name="action" value="update" />
+              <input type="hidden" name="id" value={ev.id} />
+              <label>Заглавие<input class="input" name="title" value={ev.title} maxlength="200" required /></label>
+              <div class="ed-row">
+                <label>Дата<input class="input" type="date" name="date" value={ev.starts_at.slice(0, 10)} required /></label>
+                <label>Час<input class="input" type="time" name="time" value={ev.starts_at.slice(11, 16)} /></label>
+                <label>Формат
+                  <select class="input" name="is_live">
+                    <option value="1" selected={!!ev.is_live}>На живо</option>
+                    <option value="0" selected={!ev.is_live}>Онлайн</option>
+                  </select>
+                </label>
+              </div>
+              <label>Място<input class="input" name="place" value={ev.place} maxlength="200" /></label>
+              <label>Описание<textarea class="input" name="description" rows="3" maxlength="2000">{ev.description}</textarea></label>
+              <button type="submit" class="btn btn-dark ed-submit">Запази</button>
+            </form>
+          </details>
+          <form method="post" action="/api/admin/event" onsubmit="return confirm('Да изтрия ли събитието?')">
+            <input type="hidden" name="action" value="delete" />
+            <input type="hidden" name="id" value={ev.id} />
+            <button type="submit" class="btn btn-danger small">Изтрий</button>
+          </form>
+        </div>
+      ))}
+      {events.length === 0 && <div class="empty">Няма събития — добави първото.</div>}
+    </section>
+
+    <section class="card" id="novini">
+      <div class="sec-head">НОВИНИ</div>
+
+      <details class="editor">
+        <summary>+ Нова новина</summary>
+        <form method="post" action="/api/admin/news" class="ed-form">
+          <input type="hidden" name="action" value="create" />
+          <label>Заглавие<input class="input" name="title" maxlength="200" required /></label>
+          <label>Кратко резюме (по избор)<input class="input" name="excerpt" maxlength="300" placeholder="Ако е празно, взима се началото на текста" /></label>
+          <label>Текст<textarea class="input" name="body" rows="6" maxlength="20000" required placeholder="Параграфите се разделят с празен ред."></textarea></label>
+          <label class="check"><input type="checkbox" name="featured" value="1" /> Акцент (голяма карта най-отгоре)</label>
+          <button type="submit" class="btn btn-dark ed-submit">Публикувай новина</button>
+        </form>
+      </details>
+
+      {news.map((n: any) => (
+        <div class="item-row">
+          <div class="item-main">
+            <div class="item-title">{n.title} {n.featured ? '· ★ акцент' : ''}</div>
+            <div class="item-meta">{bgDate(n.published_at)} · <a href={`/novini/${n.slug}`} class="view-link">виж →</a></div>
+          </div>
+          <details class="editor inline">
+            <summary class="edit-link">Редактирай</summary>
+            <form method="post" action="/api/admin/news" class="ed-form">
+              <input type="hidden" name="action" value="update" />
+              <input type="hidden" name="id" value={n.id} />
+              <label>Заглавие<input class="input" name="title" value={n.title} maxlength="200" required /></label>
+              <label>Кратко резюме<input class="input" name="excerpt" value={n.excerpt} maxlength="300" /></label>
+              <label>Текст<textarea class="input" name="body" rows="6" maxlength="20000" required>{n.body}</textarea></label>
+              <label class="check"><input type="checkbox" name="featured" value="1" checked={!!n.featured} /> Акцент</label>
+              <button type="submit" class="btn btn-dark ed-submit">Запази</button>
+            </form>
+          </details>
+          <form method="post" action="/api/admin/news" onsubmit="return confirm('Да изтрия ли новината?')">
+            <input type="hidden" name="action" value="delete" />
+            <input type="hidden" name="id" value={n.id} />
+            <button type="submit" class="btn btn-danger small">Изтрий</button>
+          </form>
+        </div>
+      ))}
+      {news.length === 0 && <div class="empty">Няма новини — добави първата.</div>}
+    </section>
   </main>
 </Base>
 
@@ -102,6 +220,44 @@ const reports = reportsRes.results as any[];
   .r-reason { font-size: 13px; color: var(--danger); font-weight: 700; }
   .approve { padding: 8px 14px; font-size: 13px; color: var(--ink-body); }
   .hide { padding: 8px 14px; font-size: 13px; }
+
+  .empty { padding: 22px; font-size: 14px; color: var(--faint); font-weight: 600; }
+  details.editor > summary {
+    list-style: none; cursor: pointer; padding: 14px 22px;
+    font-size: 14px; font-weight: 800; color: var(--accent);
+    border-bottom: 1px solid var(--divider);
+  }
+  details.editor > summary::-webkit-details-marker { display: none; }
+  details.editor > summary:hover { background: var(--card-hover); }
+  details.editor[open] > summary { background: var(--card-hover); }
+  .ed-form {
+    padding: 16px 22px; border-bottom: 1px solid var(--divider);
+    display: flex; flex-direction: column; gap: 12px; background: var(--card-hover);
+  }
+  .ed-form label { font-size: 13px; font-weight: 700; color: var(--muted); }
+  .ed-form label .input { margin-top: 6px; }
+  .ed-form textarea.input { resize: vertical; }
+  .ed-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .ed-row label { flex: 1; min-width: 130px; }
+  .ed-submit { align-self: flex-start; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 14px !important; color: var(--ink) !important; }
+  .item-row {
+    padding: 14px 22px; border-bottom: 1px solid var(--divider);
+    display: flex; gap: 14px; align-items: center; flex-wrap: wrap;
+  }
+  .item-row:last-child { border-bottom: none; }
+  .item-main { flex: 1; min-width: 220px; }
+  .item-title { font-weight: 800; font-size: 15px; }
+  .item-meta { font-size: 13px; color: var(--faint); font-weight: 600; }
+  .view-link { color: var(--accent); }
+  details.editor.inline { flex-basis: 100%; order: 3; }
+  details.editor.inline > summary {
+    padding: 6px 0; border-bottom: none; font-size: 13px; font-weight: 700;
+  }
+  details.editor.inline > summary:hover { background: none; text-decoration: underline; }
+  details.editor.inline .ed-form { border-radius: 12px; border: 1px solid var(--border); }
+  .btn.small { padding: 7px 14px; font-size: 13px; }
+  .item-row > form:last-child { order: 2; }
   @media (max-width: 640px) {
     .user-row { grid-template-columns: 40px 1fr auto; }
     .u-email { display: none; }
