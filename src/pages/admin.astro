@@ -7,24 +7,36 @@ if (!user) return Astro.redirect('/vhod');
 if (user.role !== 'admin') return Astro.redirect('/');
 
 const db = Astro.locals.runtime.env.DB;
-const [usersRes, reportsRes, eventsRes, newsRes] = await db.batch([
+const [usersRes, reportsRes, eventsRes, newsRes, digestRes] = await db.batch([
   db.prepare('SELECT id, name, email, role, blocked FROM users ORDER BY created_at ASC LIMIT 100'),
   db.prepare(`SELECT id, title, reason, reporter_name FROM reports WHERE status = 'pending' ORDER BY created_at ASC`),
   db.prepare(`SELECT e.id, e.title, e.starts_at, e.is_live, e.place, e.description,
     (SELECT COUNT(*) FROM rsvps r WHERE r.event_id = e.id) AS rsvp_count
     FROM events e ORDER BY e.starts_at DESC LIMIT 100`),
   db.prepare('SELECT id, slug, title, excerpt, body, featured, published_at FROM news ORDER BY published_at DESC LIMIT 100'),
+  db.prepare(`SELECT COUNT(*) AS subscribers FROM users
+    WHERE notif_digest = 1 AND blocked = 0 AND (password_hash IS NOT NULL OR oauth_provider IS NOT NULL)`),
 ]);
 const users = usersRes.results as any[];
 const reports = reportsRes.results as any[];
 const events = eventsRes.results as any[];
 const news = newsRes.results as any[];
+const subscribers = (digestRes.results as any[])[0]?.subscribers ?? 0;
 
 const error = Astro.url.searchParams.get('greshka');
 const ERRORS: Record<string, string> = {
   sabitie: 'Събитието трябва да има заглавие и валидна дата.',
   novina: 'Новината трябва да има заглавие и текст.',
 };
+
+const byuletin = Astro.url.searchParams.get('byuletin');
+let byuletinMsg: string | null = null;
+if (byuletin === 'prazen') {
+  byuletinMsg = 'Няма нищо ново тази седмица — бюлетинът беше пропуснат.';
+} else if (byuletin?.startsWith('ok-')) {
+  const [, sent, failed] = byuletin.split('-');
+  byuletinMsg = `Изпратени: ${sent}${Number(failed) > 0 ? ` · неуспешни: ${failed}` : ''}.`;
+}
 ---
 <Base title="Админ панел — Българска Lovable Общност" description="Управление на общността." noindex={true}>
   <main>
@@ -181,6 +193,27 @@ const ERRORS: Record<string, string> = {
       ))}
       {news.length === 0 && <div class="empty">Няма новини — добави първата.</div>}
     </section>
+
+    <section class="card" id="byuletin">
+      <div class="sec-head">СЕДМИЧЕН БЮЛЕТИН</div>
+      <div class="digest-box">
+        {byuletinMsg && <div class="notice notice-ok">{byuletinMsg}</div>}
+        <p class="digest-info">
+          <strong>{subscribers}</strong> абонати · изпраща се автоматично всеки петък в 10:00 ч. с
+          най-обсъжданите публикации, предстоящите събития и новините от седмицата.
+        </p>
+        <div class="digest-actions">
+          <form method="post" action="/api/admin/digest">
+            <input type="hidden" name="action" value="test" />
+            <button type="submit" class="btn btn-light">Изпрати тест до мен</button>
+          </form>
+          <form method="post" action="/api/admin/digest" onsubmit={`return confirm('Да изпратя ли бюлетина до всичките ${subscribers} абонати сега?')`}>
+            <input type="hidden" name="action" value="send" />
+            <button type="submit" class="btn btn-dark">Изпрати до всички сега</button>
+          </form>
+        </div>
+      </div>
+    </section>
   </main>
 </Base>
 
@@ -258,6 +291,10 @@ const ERRORS: Record<string, string> = {
   details.editor.inline .ed-form { border-radius: 12px; border: 1px solid var(--border); }
   .btn.small { padding: 7px 14px; font-size: 13px; }
   .item-row > form:last-child { order: 2; }
+  .digest-box { padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+  .digest-info { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.55; }
+  .digest-info strong { color: var(--ink); }
+  .digest-actions { display: flex; gap: 10px; flex-wrap: wrap; }
   @media (max-width: 640px) {
     .user-row { grid-template-columns: 40px 1fr auto; }
     .u-email { display: none; }

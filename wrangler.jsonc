@@ -11,6 +11,17 @@
   "observability": {
     "enabled": true
   },
+  "send_email": [
+    {
+      // Cloudflare Email Sending (beta) — requires communitylovable.bg to be
+      // onboarded under Email Service → Email Sending in the dashboard.
+      "name": "EMAIL"
+    }
+  ],
+  "triggers": {
+    // Weekly digest: every Friday 08:00 UTC (10:00/11:00 в България).
+    "crons": ["0 8 * * 5"]
+  },
   "d1_databases": [
     {
       "binding": "DB",

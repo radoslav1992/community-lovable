@@ -8,6 +8,7 @@ export default defineConfig({
   adapter: cloudflare({
     platformProxy: { enabled: true },
     imageService: 'compile',
+    workerEntryPoint: { path: 'src/worker.ts' },
   }),
   server: { port: 4321 },
 });
