@@ -1,0 +1,45 @@
+---
+import Base from '../layouts/Base.astro';
+
+const db = Astro.locals.runtime.env.DB;
+const userId = Number(Astro.url.searchParams.get('u'));
+const token = Astro.url.searchParams.get('t') ?? '';
+
+let ok = false;
+if (userId && token.length >= 16) {
+  const result = await db
+    .prepare('UPDATE users SET notif_digest = 0 WHERE id = ? AND digest_token = ?')
+    .bind(userId, token)
+    .run();
+  ok = (result.meta?.changes ?? 0) > 0 || !!(await db
+    .prepare('SELECT 1 FROM users WHERE id = ? AND digest_token = ? AND notif_digest = 0')
+    .bind(userId, token)
+    .first());
+}
+---
+<Base title="Отписване от бюлетина — Българска Lovable Общност" description="Отписване от седмичния бюлетин." noindex={true}>
+  <main>
+    {ok ? (
+      <>
+        <h1>Отписа се успешно</h1>
+        <p>Няма да получаваш повече седмичния бюлетин. Ако размислиш, можеш да го включиш отново от <a href="/nastroyki">настройките</a> по всяко време.</p>
+      </>
+    ) : (
+      <>
+        <h1>Невалиден линк</h1>
+        <p>Линкът за отписване не е валиден или е изтекъл. Можеш да управляваш известията си от <a href="/nastroyki">настройките на профила</a>.</p>
+      </>
+    )}
+    <a href="/" class="btn btn-dark">← Към общността</a>
+  </main>
+</Base>
+
+<style>
+  main {
+    max-width: 560px; margin: 0 auto; padding: 80px 24px;
+    text-align: center; display: flex; flex-direction: column; gap: 12px; align-items: center;
+  }
+  h1 { font-size: 28px; font-weight: 900; margin: 0; letter-spacing: -0.02em; }
+  p { margin: 0 0 12px; color: var(--muted); font-size: 16px; line-height: 1.6; }
+  p a { color: var(--accent); font-weight: 700; }
+</style>
