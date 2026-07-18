@@ -27,7 +27,7 @@ if (!post || (post.hidden && user?.role !== 'admin')) {
 const comments = (
   await db
     .prepare(
-      `SELECT c.id, c.body, c.created_at, u.name AS author_name, u.username AS author_username,
+      `SELECT c.id, c.parent_id, c.body, c.created_at, u.name AS author_name, u.username AS author_username,
               ${AUTHOR_LOVABLE_SQL}
        FROM comments c JOIN users u ON u.id = c.user_id
        WHERE c.post_id = ? ORDER BY c.created_at ASC`
@@ -35,6 +35,21 @@ const comments = (
     .bind(post.id)
     .all<any>()
 ).results;
+
+const commentByParent = new Map<number | null, any[]>();
+for (const comment of comments) {
+  const parentId = comment.parent_id ?? null;
+  const siblings = commentByParent.get(parentId) ?? [];
+  siblings.push(comment);
+  commentByParent.set(parentId, siblings);
+}
+
+const threadedComments: Array<any & { depth: number }> = [];
+const appendComment = (comment: any, depth: number) => {
+  threadedComments.push({ ...comment, depth });
+  for (const reply of commentByParent.get(comment.id) ?? []) appendComment(reply, depth + 1);
+};
+for (const comment of commentByParent.get(null) ?? []) appendComment(comment, 0);
 
 const error = Astro.url.searchParams.get('greshka');
 const reported = Astro.url.searchParams.get('dokladvano') === '1';
@@ -54,7 +69,7 @@ const jsonLd = [
       { '@type': 'InteractionCounter', interactionType: { '@type': 'LikeAction' }, userInteractionCount: post.votes },
       { '@type': 'InteractionCounter', interactionType: { '@type': 'CommentAction' }, userInteractionCount: comments.length },
     ],
-    comment: comments.map((c: any) => ({
+    comment: threadedComments.map((c: any) => ({
       '@type': 'Comment',
       text: c.body,
       dateCreated: parseDbDate(c.created_at).toISOString(),
@@ -110,18 +125,30 @@ const jsonLd = [
 
     <h2 id="komentari">Коментари</h2>
 
-    {comments.map((c: any, i: number) => (
-      <div class="card comment">
+    {threadedComments.map((c: any, i: number) => (
+      <article id={`comment-${c.id}`} class:list={["card", "comment", { "is-reply": c.depth > 0 }]} style={`--depth:${Math.min(c.depth, 6)}`}>
         <div class="avatar c-avatar" style={`background:${avatarGradient(i)}`}>{initials(c.author_name)}</div>
-        <div>
+        <div class="comment-main">
           <div class="c-head">
             <a href={`/u/${c.author_username}`} class="c-author">{c.author_name}</a>
             <LovableBadge verified={c.author_lovable} rank={c.author_lovable_rank} edits={c.author_lovable_edits} />
             <span class="c-time">{timeAgo(c.created_at)}</span>
           </div>
           <p>{c.body}</p>
+          {user && (
+            <details class="inline-reply">
+              <summary>Отговори</summary>
+              <form method="post" action="/api/comments">
+                <input type="hidden" name="post_id" value={post.id} />
+                <input type="hidden" name="slug" value={post.slug} />
+                <input type="hidden" name="parent_id" value={c.id} />
+                <input name="body" placeholder={`Отговор към ${c.author_name}…`} maxlength="2000" required autocomplete="off" />
+                <button type="submit" class="btn btn-dark">Изпрати</button>
+              </form>
+            </details>
+          )}
         </div>
-      </div>
+      </article>
     ))}
     {comments.length === 0 && <div class="card no-comments">Все още няма коментари — започни дискусията!</div>}
 
@@ -185,13 +212,21 @@ const jsonLd = [
   .report-submit { font-size: 13px; padding: 8px; }
   .reported { margin-top: 14px; }
   h2 { margin: 8px 0 0; font-size: 16px; font-weight: 800; color: var(--ink-body); }
-  .comment { padding: 16px 18px; display: flex; gap: 14px; }
+  .comment { padding: 16px 18px; display: flex; gap: 14px; margin-left: calc(var(--depth, 0) * 28px); scroll-margin-top: 88px; }
+  .comment.is-reply { border-left: 3px solid var(--accent-soft); }
+  .comment-main { flex: 1; min-width: 0; }
   .c-avatar { width: 36px; height: 36px; font-size: 12px; }
   .c-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
   .c-author { font-weight: 800; font-size: 14px; }
   .c-author:hover { color: var(--accent); }
   .c-time { font-size: 12px; color: var(--faint); font-weight: 600; }
   .comment p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--ink-soft); }
+  .inline-reply { margin-top: 8px; }
+  .inline-reply summary { color: var(--accent); cursor: pointer; font-size: 13px; font-weight: 800; width: fit-content; }
+  .inline-reply form { display: flex; gap: 8px; margin-top: 8px; }
+  .inline-reply input[name="body"] {
+    flex: 1; min-width: 0; border: 1px solid var(--border-input); border-radius: 999px; padding: 9px 12px; font-size: 14px;
+  }
   .no-comments { padding: 18px; font-size: 14px; color: var(--faint); font-weight: 600; }
   .reply { padding: 14px; display: flex; gap: 10px; }
   .reply input[name="body"] {
