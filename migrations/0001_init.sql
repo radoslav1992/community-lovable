@@ -45,11 +45,13 @@ CREATE TABLE comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
   user_id INTEGER NOT NULL REFERENCES users(id),
+  parent_id INTEGER REFERENCES comments(id) ON DELETE CASCADE,
   body TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX idx_comments_post ON comments(post_id);
 CREATE INDEX idx_comments_user ON comments(user_id);
+CREATE INDEX idx_comments_parent ON comments(parent_id);
 
 CREATE TABLE votes (
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
