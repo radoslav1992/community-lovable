@@ -6,4 +6,4 @@ Disallow: /nastroyki
 Disallow: /profil
 Disallow: /vhod
 
-Sitemap: https://communitylovable.bg/sitemap.xml
+Sitemap: https://communitylovable.bg/sitemap-index.xml
