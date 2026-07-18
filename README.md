@@ -22,7 +22,8 @@ Cloudflare D1.
 - Канонични URL-и с транслитерирани slug-ове (`/t/kak-svarzah-supabase-auth…`)
 - JSON-LD структурирани данни: `DiscussionForumPosting` + `Comment` за темите,
   `Event` за събитията, `NewsArticle`, `Course`, `WebSite` + `SearchAction`
-- `sitemap.xml` (генериран от базата), `rss.xml`, `robots.txt`, Open Graph и
+- `sitemap-index.xml` + разделени sitemap-и за всички теми, `rss.xml`,
+  `robots.txt`, Open Graph и
   Twitter карти, `lang="bg"` / `og:locale=bg_BG`
 - Edge кеширане за гости (`s-maxage=60, stale-while-revalidate`), шрифтът се
   preload-ва, всички изображения са оптимизирани
@@ -89,7 +90,7 @@ src/
   middleware.ts          зарежда потребителя от сесийната бисквитка
   pages/                 / (емисия), /t/[slug] (тема), /sabitiya, /novini,
                          /obuchenie, /vhod, /profil, /nastroyki, /admin,
-                         /tarsene, sitemap.xml, rss.xml, 404
+                         /tarsene, sitemap-index.xml, sitemap.xml, sitemap-posts, rss.xml, 404
   pages/api/             auth, posts, comments, vote, rsvp, settings,
                          account/delete, admin/block, admin/report
 ```

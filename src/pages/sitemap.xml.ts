@@ -1,12 +1,15 @@
 import type { APIRoute } from 'astro';
 import { parseDbDate } from '../lib/format';
 
+function xmlEscape(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
 export const GET: APIRoute = async ({ locals, site }) => {
   const db = locals.runtime.env.DB;
   const origin = (site ?? new URL('https://communitylovable.bg')).origin;
 
-  const [posts, news, courses, lessons, articles, profiles] = await db.batch([
-    db.prepare('SELECT slug, created_at FROM posts WHERE hidden = 0 ORDER BY created_at DESC LIMIT 5000'),
+  const [news, courses, lessons, articles, profiles] = await db.batch([
     db.prepare('SELECT slug, published_at FROM news ORDER BY published_at DESC LIMIT 500'),
     db.prepare('SELECT slug FROM courses ORDER BY sort'),
     db.prepare(`SELECT c.slug AS course_slug, l.slug AS lesson_slug FROM lessons l JOIN courses c ON c.id = l.course_id ORDER BY c.sort, l.sort`),
@@ -16,29 +19,25 @@ export const GET: APIRoute = async ({ locals, site }) => {
 
   const staticPages = ['/', '/sabitiya', '/novini', '/obuchenie', '/klasatsiya'];
   const urls: string[] = staticPages.map(
-    (p) => `<url><loc>${origin}${p}</loc><changefreq>hourly</changefreq><priority>${p === '/' ? '1.0' : '0.8'}</priority></url>`
+    (p) => `<url><loc>${xmlEscape(`${origin}${p}`)}</loc><changefreq>hourly</changefreq><priority>${p === '/' ? '1.0' : '0.8'}</priority></url>`
   );
-  for (const row of posts.results as { slug: string; created_at: string }[]) {
-    urls.push(
-      `<url><loc>${origin}/t/${row.slug}</loc><lastmod>${parseDbDate(row.created_at).toISOString()}</lastmod><priority>0.7</priority></url>`
-    );
-  }
+
   for (const row of news.results as { slug: string; published_at: string }[]) {
     urls.push(
-      `<url><loc>${origin}/novini/${row.slug}</loc><lastmod>${parseDbDate(row.published_at).toISOString()}</lastmod><priority>0.6</priority></url>`
+      `<url><loc>${xmlEscape(`${origin}/novini/${row.slug}`)}</loc><lastmod>${parseDbDate(row.published_at).toISOString()}</lastmod><priority>0.6</priority></url>`
     );
   }
   for (const row of courses.results as { slug: string }[]) {
-    urls.push(`<url><loc>${origin}/obuchenie/${row.slug}</loc><priority>0.6</priority></url>`);
+    urls.push(`<url><loc>${xmlEscape(`${origin}/obuchenie/${row.slug}`)}</loc><priority>0.6</priority></url>`);
   }
   for (const row of lessons.results as { course_slug: string; lesson_slug: string }[]) {
-    urls.push(`<url><loc>${origin}/obuchenie/${row.course_slug}/${row.lesson_slug}</loc><priority>0.5</priority></url>`);
+    urls.push(`<url><loc>${xmlEscape(`${origin}/obuchenie/${row.course_slug}/${row.lesson_slug}`)}</loc><priority>0.5</priority></url>`);
   }
   for (const row of articles.results as { slug: string }[]) {
-    urls.push(`<url><loc>${origin}/statii/${row.slug}</loc><priority>0.5</priority></url>`);
+    urls.push(`<url><loc>${xmlEscape(`${origin}/statii/${row.slug}`)}</loc><priority>0.5</priority></url>`);
   }
   for (const row of profiles.results as { username: string }[]) {
-    urls.push(`<url><loc>${origin}/u/${row.username}</loc><priority>0.3</priority></url>`);
+    urls.push(`<url><loc>${xmlEscape(`${origin}/u/${row.username}`)}</loc><priority>0.3</priority></url>`);
   }
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
