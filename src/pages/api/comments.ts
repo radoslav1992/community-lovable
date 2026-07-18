@@ -10,7 +10,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const slug = String(form.get('slug') ?? '');
   const body = String(form.get('body') ?? '').trim().slice(0, 2000);
   const rawParentId = Number(form.get('parent_id'));
-  const parentId = Number.isInteger(rawParentId) && rawParentId > 0 ? rawParentId : null;
+  const requestedParentId = Number.isInteger(rawParentId) && rawParentId > 0 ? rawParentId : null;
 
   const post = await db
     .prepare('SELECT slug FROM posts WHERE id = ? AND hidden = 0')
@@ -21,6 +21,10 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const backUrl = `/t/${post.slug ?? slug}`;
   if (user.blocked) return redirect(`${backUrl}?greshka=blokiran#komentari`, 303);
   if (!body) return redirect(`${backUrl}#komentari`, 303);
+
+  const commentColumns = (await db.prepare('PRAGMA table_info(comments)').all<{ name: string }>()).results;
+  const supportsCommentReplies = commentColumns.some((column) => column.name === 'parent_id');
+  const parentId = supportsCommentReplies ? requestedParentId : null;
 
   let replyAnchor = 'komentari';
   if (parentId) {
@@ -33,10 +37,17 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     replyAnchor = `comment-${parent.id}`;
   }
 
-  await db
-    .prepare('INSERT INTO comments (post_id, user_id, parent_id, body) VALUES (?, ?, ?, ?)')
-    .bind(postId, user.id, parentId, body)
-    .run();
+  if (supportsCommentReplies) {
+    await db
+      .prepare('INSERT INTO comments (post_id, user_id, parent_id, body) VALUES (?, ?, ?, ?)')
+      .bind(postId, user.id, parentId, body)
+      .run();
+  } else {
+    await db
+      .prepare('INSERT INTO comments (post_id, user_id, body) VALUES (?, ?, ?)')
+      .bind(postId, user.id, body)
+      .run();
+  }
 
   return redirect(`${backUrl}#${replyAnchor}`, 303);
 };

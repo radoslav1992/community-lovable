@@ -18,7 +18,7 @@
       <circle cx="612" cy="554" r="34" fill="black"/>
     </mask>
   </defs>
-  <rect width="1024" height="1024" rx="184" fill="#050505"/>
+  <rect width="1024" height="1024" rx="184" fill="#fff"/>
   <g filter="url(#shadow)">
     <circle cx="266" cy="330" r="74" fill="url(#g)"/>
     <circle cx="512" cy="232" r="84" fill="url(#g)"/>
