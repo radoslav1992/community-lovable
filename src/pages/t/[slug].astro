@@ -24,11 +24,13 @@ if (!post || (post.hidden && user?.role !== 'admin')) {
   return new Response(null, { status: 404, statusText: 'Not Found' });
 }
 
+const commentColumns = (await db.prepare('PRAGMA table_info(comments)').all<{ name: string }>()).results;
+const supportsCommentReplies = commentColumns.some((column) => column.name === 'parent_id');
 const comments = (
   await db
     .prepare(
-      `SELECT c.id, c.parent_id, c.body, c.created_at, u.name AS author_name, u.username AS author_username,
-              ${AUTHOR_LOVABLE_SQL}
+      `SELECT c.id, ${supportsCommentReplies ? 'c.parent_id' : 'NULL AS parent_id'}, c.body, c.created_at,
+              u.name AS author_name, u.username AS author_username, ${AUTHOR_LOVABLE_SQL}
        FROM comments c JOIN users u ON u.id = c.user_id
        WHERE c.post_id = ? ORDER BY c.created_at ASC`
     )
