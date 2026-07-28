@@ -1,0 +1,137 @@
+---
+// Markdown comment composer: formatting toolbar, live preview and a textarea
+// that keeps line breaks. Without JS it degrades to a plain textarea + submit,
+// and the Markdown is still rendered on the server.
+interface Props {
+  postId: number;
+  slug: string;
+  parentId?: number;
+  placeholder?: string;
+  submitLabel?: string;
+  compact?: boolean;
+  autofocus?: boolean;
+}
+
+const {
+  postId,
+  slug,
+  parentId,
+  placeholder = 'Добави коментар…',
+  submitLabel = 'Изпрати',
+  compact = false,
+  autofocus = false,
+} = Astro.props;
+
+const TOOLS = [
+  { action: 'bold', label: 'B', title: 'Удебелен (Ctrl+B)', className: 'tool-bold' },
+  { action: 'italic', label: 'I', title: 'Курсив (Ctrl+I)', className: 'tool-italic' },
+  { action: 'code', label: '</>', title: 'Код', className: '' },
+  { action: 'link', label: '🔗', title: 'Връзка (Ctrl+K)', className: '' },
+  { action: 'list', label: '• —', title: 'Списък', className: '' },
+  { action: 'quote', label: '❝', title: 'Цитат', className: '' },
+];
+---
+<form
+  method="post"
+  action="/api/comments"
+  class:list={['comment-editor', { compact }]}
+  data-comment-editor
+>
+  <input type="hidden" name="post_id" value={postId} />
+  <input type="hidden" name="slug" value={slug} />
+  {parentId && <input type="hidden" name="parent_id" value={parentId} />}
+
+  <div class="toolbar">
+    {TOOLS.map((tool) => (
+      <button
+        type="button"
+        class:list={['tool', tool.className]}
+        data-md={tool.action}
+        title={tool.title}
+        aria-label={tool.title}
+      >{tool.label}</button>
+    ))}
+    <span class="spacer"></span>
+    <button type="button" class="tool preview-toggle" data-md-preview aria-pressed="false">Преглед</button>
+  </div>
+
+  <textarea
+    name="body"
+    class="editor-input"
+    placeholder={placeholder}
+    maxlength="5000"
+    rows={compact ? 3 : 4}
+    required
+    autofocus={autofocus}
+  ></textarea>
+  <div class="preview md" data-md-preview-target hidden></div>
+
+  <div class="editor-foot">
+    <span class="hint">
+      Поддържа <strong>**удебелен**</strong>, <em>*курсив*</em>, `код`, списъци и връзки. Enter прави нов ред.
+    </span>
+    <button type="submit" class="btn btn-dark">{submitLabel}</button>
+  </div>
+</form>
+
+<style>
+  .comment-editor {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+  }
+  .comment-editor.compact { padding: 10px; border-radius: 14px; background: var(--card-hover); }
+  .toolbar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+  .tool {
+    border: 1px solid transparent;
+    background: none;
+    color: var(--muted);
+    border-radius: 8px;
+    padding: 4px 9px;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    line-height: 1.4;
+  }
+  .tool:hover { background: var(--hover-bg); color: var(--ink); }
+  .tool-bold { font-weight: 900; }
+  .tool-italic { font-style: italic; }
+  .spacer { flex: 1; }
+  .preview-toggle[aria-pressed='true'] { background: var(--accent-soft); color: var(--accent); }
+  .editor-input {
+    width: 100%;
+    min-height: 84px;
+    resize: vertical;
+    border: 1px solid var(--border-input);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--ink);
+    background: #fff;
+    outline: none;
+  }
+  .compact .editor-input { min-height: 66px; font-size: 14px; }
+  .editor-input:focus { border-color: var(--accent); }
+  .preview {
+    border: 1px dashed var(--border-input);
+    border-radius: 12px;
+    padding: 10px 12px;
+    font-size: 15px;
+    line-height: 1.6;
+    color: var(--ink-soft);
+    background: #fff;
+  }
+  .preview:empty::before { content: 'Няма какво да се покаже още.'; color: var(--faint); }
+  .editor-foot { display: flex; align-items: center; gap: 12px; }
+  .hint { flex: 1; font-size: 12px; color: var(--faint); font-weight: 600; line-height: 1.4; }
+  .hint strong, .hint em { color: var(--muted); }
+  @media (max-width: 560px) {
+    .editor-foot { flex-direction: column; align-items: stretch; }
+    .hint { order: 2; }
+  }
+</style>

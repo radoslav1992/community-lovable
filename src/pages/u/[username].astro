@@ -33,7 +33,8 @@ const [statsRes, postsRes] = visible
         .prepare(
           `SELECT
             (SELECT COUNT(*) FROM posts WHERE user_id = ?1 AND hidden = 0) AS post_count,
-            (SELECT COUNT(*) FROM comments c JOIN posts p ON p.id = c.post_id WHERE c.user_id = ?1 AND p.hidden = 0) AS comment_count,
+            (SELECT COUNT(*) FROM comments c JOIN posts p ON p.id = c.post_id
+              WHERE c.user_id = ?1 AND p.hidden = 0 AND c.body != '') AS comment_count,
             (SELECT COALESCE(SUM(base_votes), 0) FROM posts WHERE user_id = ?1 AND hidden = 0)
               + (SELECT COUNT(*) FROM votes v JOIN posts p ON p.id = v.post_id WHERE p.user_id = ?1 AND p.hidden = 0) AS points`
         )

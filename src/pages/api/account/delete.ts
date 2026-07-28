@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { clearSessionCookie } from '../../../lib/auth';
+import { hasTable } from '../../../lib/schema';
 
 /**
  * Irreversibly deletes the account: posts and comments stay but are anonymized
@@ -10,9 +11,11 @@ export const POST: APIRoute = async ({ locals, cookies, redirect }) => {
   if (!user) return redirect('/vhod', 303);
 
   const db = locals.runtime.env.DB;
+  const commentVotes = await hasTable(db, 'comment_votes');
   await db.batch([
     db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id),
     db.prepare('DELETE FROM votes WHERE user_id = ?').bind(user.id),
+    ...(commentVotes ? [db.prepare('DELETE FROM comment_votes WHERE user_id = ?').bind(user.id)] : []),
     db.prepare('DELETE FROM rsvps WHERE user_id = ?').bind(user.id),
     db
       .prepare(

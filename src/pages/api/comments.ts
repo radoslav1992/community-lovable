@@ -1,4 +1,22 @@
 import type { APIRoute } from 'astro';
+import { commentFeatures } from '../../lib/schema';
+
+/** Control characters that would never be typed on purpose. */
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g;
+
+/** Comments are Markdown, so they need more room than a one-liner. */
+const MAX_LENGTH = 5000;
+
+/** Keeps the author's line breaks; trims trailing whitespace and blank runs. */
+function normalizeBody(raw: string): string {
+  return raw
+    .replace(/\r\n?/g, '\n')
+    .replace(CONTROL_CHARS, '')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+    .slice(0, MAX_LENGTH);
+}
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const user = locals.user;
@@ -8,7 +26,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const form = await request.formData();
   const postId = Number(form.get('post_id'));
   const slug = String(form.get('slug') ?? '');
-  const body = String(form.get('body') ?? '').trim().slice(0, 2000);
+  const body = normalizeBody(String(form.get('body') ?? ''));
   const rawParentId = Number(form.get('parent_id'));
   const requestedParentId = Number.isInteger(rawParentId) && rawParentId > 0 ? rawParentId : null;
 
@@ -22,9 +40,8 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   if (user.blocked) return redirect(`${backUrl}?greshka=blokiran#komentari`, 303);
   if (!body) return redirect(`${backUrl}#komentari`, 303);
 
-  const commentColumns = (await db.prepare('PRAGMA table_info(comments)').all<{ name: string }>()).results;
-  const supportsCommentReplies = commentColumns.some((column) => column.name === 'parent_id');
-  const parentId = supportsCommentReplies ? requestedParentId : null;
+  const features = await commentFeatures(db);
+  const parentId = features.replies ? requestedParentId : null;
 
   let replyAnchor = 'komentari';
   if (parentId) {
@@ -37,7 +54,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     replyAnchor = `comment-${parent.id}`;
   }
 
-  if (supportsCommentReplies) {
+  if (features.replies) {
     await db
       .prepare('INSERT INTO comments (post_id, user_id, parent_id, body) VALUES (?, ?, ?, ?)')
       .bind(postId, user.id, parentId, body)

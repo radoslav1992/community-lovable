@@ -1,8 +1,11 @@
 ---
 import Base from '../../layouts/Base.astro';
 import LovableBadge from '../../components/LovableBadge.astro';
+import CommentEditor from '../../components/CommentEditor.astro';
 import { AUTHOR_LOVABLE_SQL } from '../../lib/lovable';
 import { tagStyle, timeAgo, initials, avatarGradient, parseDbDate } from '../../lib/format';
+import { renderMarkdown, plainText } from '../../lib/markdown';
+import { commentFeatures } from '../../lib/schema';
 
 const db = Astro.locals.runtime.env.DB;
 const user = Astro.locals.user;
@@ -24,17 +27,23 @@ if (!post || (post.hidden && user?.role !== 'admin')) {
   return new Response(null, { status: 404, statusText: 'Not Found' });
 }
 
-const commentColumns = (await db.prepare('PRAGMA table_info(comments)').all<{ name: string }>()).results;
-const supportsCommentReplies = commentColumns.some((column) => column.name === 'parent_id');
+const features = await commentFeatures(db);
+// `?2` only exists in the query when comment votes do, so bind it conditionally.
+const voteColumns = features.votes
+  ? `(SELECT COUNT(*) FROM comment_votes cv WHERE cv.comment_id = c.id) AS votes,
+     EXISTS(SELECT 1 FROM comment_votes cv2 WHERE cv2.comment_id = c.id AND cv2.user_id = ?2) AS voted`
+  : '0 AS votes, 0 AS voted';
 const comments = (
   await db
     .prepare(
-      `SELECT c.id, ${supportsCommentReplies ? 'c.parent_id' : 'NULL AS parent_id'}, c.body, c.created_at,
-              u.name AS author_name, u.username AS author_username, ${AUTHOR_LOVABLE_SQL}
+      `SELECT c.id, c.user_id, ${features.replies ? 'c.parent_id' : 'NULL AS parent_id'}, c.body, c.created_at,
+              ${features.deletes ? 'c.deleted_at' : 'NULL AS deleted_at'},
+              u.name AS author_name, u.username AS author_username, ${AUTHOR_LOVABLE_SQL},
+              ${voteColumns}
        FROM comments c JOIN users u ON u.id = c.user_id
-       WHERE c.post_id = ? ORDER BY c.created_at ASC`
+       WHERE c.post_id = ?1 ORDER BY c.created_at ASC`
     )
-    .bind(post.id)
+    .bind(...(features.votes ? [post.id, user?.id ?? 0] : [post.id]))
     .all<any>()
 ).results;
 
@@ -46,14 +55,31 @@ for (const comment of comments) {
   commentByParent.set(parentId, siblings);
 }
 
-const threadedComments: Array<any & { depth: number }> = [];
+// Best-voted discussion first, so the most useful answer sits right under the
+// post; replies stay in the order they were written.
+const roots = [...(commentByParent.get(null) ?? [])].sort(
+  (a, b) => Number(b.votes) - Number(a.votes) || String(a.created_at).localeCompare(String(b.created_at))
+);
+
+const threadedComments: any[] = [];
 const appendComment = (comment: any, depth: number) => {
   threadedComments.push({ ...comment, depth });
   for (const reply of commentByParent.get(comment.id) ?? []) appendComment(reply, depth + 1);
 };
-for (const comment of commentByParent.get(null) ?? []) appendComment(comment, 0);
+for (const root of roots) appendComment(root, 0);
+
+// Highlight the top comment only when the vote actually says something.
+const topCommentId =
+  features.votes && roots.length > 1 && Number(roots[0]?.votes) > 0 && !roots[0]?.deleted_at
+    ? Number(roots[0]!.id)
+    : null;
+
+const visibleCount = comments.filter((c: any) => !c.deleted_at).length;
+const canDelete = (comment: any) =>
+  !!user && !comment.deleted_at && (comment.user_id === user.id || user.role === 'admin' || user.role === 'moderator');
 
 const error = Astro.url.searchParams.get('greshka');
+const deleted = Astro.url.searchParams.get('iztrito') === '1';
 const reported = Astro.url.searchParams.get('dokladvano') === '1';
 const REPORT_REASONS = ['Спам / реклама', 'Неуважително отношение', 'Подвеждащо съдържание', 'Друго'];
 const description = (post.excerpt || post.body).slice(0, 160);
@@ -69,14 +95,25 @@ const jsonLd = [
     inLanguage: 'bg',
     interactionStatistic: [
       { '@type': 'InteractionCounter', interactionType: { '@type': 'LikeAction' }, userInteractionCount: post.votes },
-      { '@type': 'InteractionCounter', interactionType: { '@type': 'CommentAction' }, userInteractionCount: comments.length },
+      { '@type': 'InteractionCounter', interactionType: { '@type': 'CommentAction' }, userInteractionCount: visibleCount },
     ],
-    comment: threadedComments.map((c: any) => ({
-      '@type': 'Comment',
-      text: c.body,
-      dateCreated: parseDbDate(c.created_at).toISOString(),
-      author: { '@type': 'Person', name: c.author_name },
-    })),
+    comment: threadedComments
+      .filter((c: any) => !c.deleted_at)
+      .map((c: any) => ({
+        '@type': 'Comment',
+        text: plainText(c.body),
+        dateCreated: parseDbDate(c.created_at).toISOString(),
+        author: { '@type': 'Person', name: c.author_name },
+        ...(features.votes
+          ? {
+              interactionStatistic: {
+                '@type': 'InteractionCounter',
+                interactionType: { '@type': 'LikeAction' },
+                userInteractionCount: Number(c.votes),
+              },
+            }
+          : {}),
+      })),
   },
 ];
 ---
@@ -107,7 +144,7 @@ const jsonLd = [
             ▲ <span data-vote-count>{post.votes}</span>
           </button>
         </form>
-        <span class="count">{comments.length} коментара</span>
+        <span class="count">{visibleCount} коментара</span>
         <span class="flex-spacer"></span>
         {user && (
           <details class="report menu">
@@ -127,42 +164,89 @@ const jsonLd = [
 
     <h2 id="komentari">Коментари</h2>
 
+    {deleted && <div class="notice notice-ok">Коментарът е изтрит.</div>}
+    {error === 'neotorizirano' && <div class="notice notice-error">Можеш да изтриваш само собствените си коментари.</div>}
+    {error === 'iztrivane' && <div class="notice notice-error">Коментарът не може да бъде изтрит в момента.</div>}
+    {error === 'blokiran' && <div class="notice notice-error">Профилът ти е блокиран и не може да коментира.</div>}
+
     {threadedComments.map((c: any, i: number) => (
-      <article id={`comment-${c.id}`} class:list={["card", "comment", { "is-reply": c.depth > 0 }]} style={`--depth:${Math.min(c.depth, 6)}`}>
-        <div class="avatar c-avatar" style={`background:${avatarGradient(i)}`}>{initials(c.author_name)}</div>
+      <article
+        id={`comment-${c.id}`}
+        class:list={[
+          'card',
+          'comment',
+          { 'is-reply': c.depth > 0, 'is-top': c.id === topCommentId, 'is-deleted': !!c.deleted_at },
+        ]}
+        style={`--depth:${Math.min(c.depth, 6)}`}
+      >
+        {c.deleted_at ? (
+          <div class="avatar c-avatar ghost">×</div>
+        ) : (
+          <div class="avatar c-avatar" style={`background:${avatarGradient(i)}`}>{initials(c.author_name)}</div>
+        )}
         <div class="comment-main">
-          <div class="c-head">
-            <a href={`/u/${c.author_username}`} class="c-author">{c.author_name}</a>
-            <LovableBadge verified={c.author_lovable} rank={c.author_lovable_rank} edits={c.author_lovable_edits} />
-            <span class="c-time">{timeAgo(c.created_at)}</span>
-          </div>
-          <p>{c.body}</p>
-          {user && (
-            <details class="inline-reply">
-              <summary>Отговори</summary>
-              <form method="post" action="/api/comments">
-                <input type="hidden" name="post_id" value={post.id} />
-                <input type="hidden" name="slug" value={post.slug} />
-                <input type="hidden" name="parent_id" value={c.id} />
-                <input name="body" placeholder={`Отговор към ${c.author_name}…`} maxlength="2000" required autocomplete="off" />
-                <button type="submit" class="btn btn-dark">Изпрати</button>
-              </form>
-            </details>
+          {c.id === topCommentId && <span class="top-badge">★ Топ коментар</span>}
+          {c.deleted_at ? (
+            <>
+              <div class="c-head"><span class="c-time">Коментарът е изтрит</span></div>
+              <p class="tombstone">Този коментар беше премахнат от автора си.</p>
+            </>
+          ) : (
+            <>
+              <div class="c-head">
+                <a href={`/u/${c.author_username}`} class="c-author">{c.author_name}</a>
+                <LovableBadge verified={c.author_lovable} rank={c.author_lovable_rank} edits={c.author_lovable_edits} />
+                <span class="c-time">{timeAgo(c.created_at)}</span>
+              </div>
+              <div class="c-body md" set:html={renderMarkdown(c.body)} />
+              <div class="c-actions" data-vote-scope>
+                {features.votes && (
+                  <form method="post" action="/api/comments/vote" data-vote>
+                    <input type="hidden" name="comment_id" value={c.id} />
+                    <input type="hidden" name="back" value={`/t/${post.slug}#comment-${c.id}`} />
+                    <button
+                      type="submit"
+                      class:list={['c-vote', { voted: !!c.voted }]}
+                      title="Гласувай за коментара"
+                      aria-label="Гласувай за коментара"
+                    >
+                      ▲ <span data-vote-count>{c.votes}</span>
+                    </button>
+                  </form>
+                )}
+                {canDelete(c) && (
+                  <form
+                    method="post"
+                    action="/api/comments/delete"
+                    data-confirm="Сигурен/на ли си, че искаш да изтриеш този коментар?"
+                  >
+                    <input type="hidden" name="comment_id" value={c.id} />
+                    <button type="submit" class="c-action danger">Изтрий</button>
+                  </form>
+                )}
+                {user && (
+                  <details class="inline-reply" id={`reply-${c.id}`}>
+                    <summary class="c-action">Отговори</summary>
+                    <CommentEditor
+                      postId={post.id}
+                      slug={post.slug}
+                      parentId={c.id}
+                      placeholder={`Отговор към ${c.author_name}…`}
+                      submitLabel="Отговори"
+                      compact={true}
+                    />
+                  </details>
+                )}
+              </div>
+            </>
           )}
         </div>
       </article>
     ))}
     {comments.length === 0 && <div class="card no-comments">Все още няма коментари — започни дискусията!</div>}
 
-    {error === 'blokiran' && <div class="notice notice-error">Профилът ти е блокиран и не може да коментира.</div>}
-
     {user ? (
-      <form class="card reply" method="post" action="/api/comments">
-        <input type="hidden" name="post_id" value={post.id} />
-        <input type="hidden" name="slug" value={post.slug} />
-        <input name="body" placeholder="Добави коментар…" maxlength="2000" required autocomplete="off" />
-        <button type="submit" class="btn btn-dark">Изпрати</button>
-      </form>
+      <CommentEditor postId={post.id} slug={post.slug} />
     ) : (
       <div class="notice notice-pink">
         <a href="/vhod" class="login-link">Влез в профила си</a>, за да се включиш в дискусията.
@@ -172,6 +256,7 @@ const jsonLd = [
 </Base>
 
 <script src="../../scripts/vote.ts"></script>
+<script src="../../scripts/comments.ts"></script>
 
 <style>
   main {
@@ -216,23 +301,41 @@ const jsonLd = [
   h2 { margin: 8px 0 0; font-size: 16px; font-weight: 800; color: var(--ink-body); }
   .comment { padding: 16px 18px; display: flex; gap: 14px; margin-left: calc(var(--depth, 0) * 28px); scroll-margin-top: 88px; }
   .comment.is-reply { border-left: 3px solid var(--accent-soft); }
+  .comment.is-top { border-color: var(--accent); box-shadow: 0 6px 20px rgba(255, 1, 120, 0.07); }
+  .comment.is-deleted { background: transparent; border-style: dashed; }
   .comment-main { flex: 1; min-width: 0; }
   .c-avatar { width: 36px; height: 36px; font-size: 12px; }
-  .c-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; }
+  .c-avatar.ghost { background: var(--hover-bg); color: var(--faint); font-size: 16px; }
+  .top-badge {
+    display: inline-block; margin-bottom: 6px; font-size: 11px; font-weight: 800;
+    letter-spacing: 0.04em; padding: 3px 9px; border-radius: 99px;
+    background: var(--accent-soft); color: var(--accent);
+  }
+  .c-head { display: flex; gap: 10px; align-items: baseline; margin-bottom: 4px; flex-wrap: wrap; }
   .c-author { font-weight: 800; font-size: 14px; }
   .c-author:hover { color: var(--accent); }
   .c-time { font-size: 12px; color: var(--faint); font-weight: 600; }
-  .comment p { margin: 0; font-size: 15px; line-height: 1.55; color: var(--ink-soft); }
-  .inline-reply { margin-top: 8px; }
-  .inline-reply summary { color: var(--accent); cursor: pointer; font-size: 13px; font-weight: 800; width: fit-content; }
-  .inline-reply form { display: flex; gap: 8px; margin-top: 8px; }
-  .inline-reply input[name="body"] {
-    flex: 1; min-width: 0; border: 1px solid var(--border-input); border-radius: 999px; padding: 9px 12px; font-size: 14px;
+  .tombstone { margin: 0; font-size: 14px; color: var(--faint); font-style: italic; }
+  .c-actions { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .c-vote {
+    display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+    padding: 4px 11px; border-radius: 99px; font-size: 13px; font-weight: 800;
+    border: 1px solid var(--border-input); color: var(--ink-body); background: #fff;
   }
+  .c-vote:hover { border-color: var(--accent); }
+  .c-vote.voted { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+  .c-action {
+    background: none; border: none; cursor: pointer; padding: 4px 8px;
+    font-size: 13px; font-weight: 800; color: var(--accent); border-radius: 8px;
+  }
+  .c-action:hover { background: var(--accent-soft); }
+  .c-action.danger { color: var(--faint); }
+  .c-action.danger:hover { background: var(--danger-soft); color: var(--danger); }
+  /* Sits inline in the action row while closed, takes the full row when open. */
+  .inline-reply[open] { width: 100%; margin-top: 4px; }
+  .inline-reply > summary { list-style: none; cursor: pointer; }
+  .inline-reply > summary::-webkit-details-marker { display: none; }
+  .inline-reply[open] > summary { color: var(--muted); margin-bottom: 6px; }
   .no-comments { padding: 18px; font-size: 14px; color: var(--faint); font-weight: 600; }
-  .reply { padding: 14px; display: flex; gap: 10px; }
-  .reply input[name="body"] {
-    flex: 1; border: none; outline: none; font-size: 15px; background: none; color: var(--ink);
-  }
   .login-link { text-decoration: underline; }
 </style>
