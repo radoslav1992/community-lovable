@@ -50,6 +50,12 @@ const allRows = postsRes.results as any[];
 const hasMore = allRows.length > PER_PAGE;
 const posts = allRows.slice(0, PER_PAGE);
 
+// Now that feed pages canonicalize to themselves, an out-of-range page must not
+// answer with an indexable empty listing.
+if (page > 1 && posts.length === 0) {
+  return new Response(null, { status: 404, statusText: 'Not Found' });
+}
+
 function pageUrl(p: number): string {
   const params = new URLSearchParams();
   if (activeFilter) params.set('filtar', activeFilter);
@@ -67,26 +73,50 @@ const eventPlaceShort = nextEvent
 
 const filters = [{ label: 'Всички', href: '/' }, ...TAGS.map((t) => ({ label: t, href: `/?filtar=${encodeURIComponent(t)}` }))];
 
-const description = 'Мястото на българските Lovable билдъри. Споделяй проекти, задавай въпроси, учи с нас — дискусии, събития, новини и обучение на български.';
-const jsonLd = [
-  {
-    '@context': 'https://schema.org',
-    '@type': 'WebSite',
-    name: 'Българска Lovable Общност',
-    url: 'https://communitylovable.bg/',
-    inLanguage: 'bg',
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: 'https://communitylovable.bg/tarsene?q={search_term_string}',
-      'query-input': 'required name=search_term_string',
-    },
-  },
-];
+// Every feed view canonicalizes to itself: page 3 and a tag filter are not the
+// same content as the front page, so pointing them all at "/" told crawlers to
+// drop the archive instead of walking it.
+const canonicalPath = pageUrl(page);
+
+// Only `filtar`/`stranitsa` describe the view; flash params (`greshka`,
+// `post=new`) are per-visitor and must not be cached at the edge.
+const VIEW_PARAMS = new Set(['filtar', 'stranitsa']);
+const cacheable = [...Astro.url.searchParams.keys()].every((key) => VIEW_PARAMS.has(key));
+
+const baseTitle = activeFilter
+  ? `${activeFilter} — Българска Lovable Общност`
+  : 'Българска Lovable Общност — начало';
+const title = page > 1 ? `${baseTitle} · страница ${page}` : baseTitle;
+
+const baseDescription = activeFilter
+  ? `Публикации с етикет „${activeFilter}“ от българската Lovable общност — въпроси, отговори и споделен опит.`
+  : 'Мястото на българските Lovable билдъри. Споделяй проекти, задавай въпроси, учи с нас — дискусии, събития, новини и обучение на български.';
+const description = page > 1 ? `${baseDescription} Страница ${page}.` : baseDescription;
+
+// The site-level search action belongs on the front page only.
+const jsonLd =
+  page === 1 && !activeFilter
+    ? [
+        {
+          '@context': 'https://schema.org',
+          '@type': 'WebSite',
+          name: 'Българска Lovable Общност',
+          url: 'https://communitylovable.bg/',
+          inLanguage: 'bg',
+          potentialAction: {
+            '@type': 'SearchAction',
+            target: 'https://communitylovable.bg/tarsene?q={search_term_string}',
+            'query-input': 'required name=search_term_string',
+          },
+        },
+      ]
+    : [];
 ---
 <Base
-  title="Българска Lovable Общност — начало"
+  title={title}
   description={description}
-  canonicalPath="/"
+  canonicalPath={canonicalPath}
+  cacheable={cacheable}
   jsonLd={jsonLd}
 >
   <main>

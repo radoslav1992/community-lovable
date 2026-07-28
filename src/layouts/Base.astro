@@ -13,6 +13,12 @@ interface Props {
   /** Serialized JSON-LD structured data blocks. */
   jsonLd?: object[];
   noindex?: boolean;
+  /**
+   * Set by pages whose query string is part of the view itself (a feed page or
+   * filter) rather than a flash message, so those URLs can still be edge-cached
+   * for guests. Defaults to "only a bare path is cacheable".
+   */
+  cacheable?: boolean;
 }
 
 const {
@@ -23,6 +29,7 @@ const {
   ogImage = '/assets/og-color.png',
   jsonLd = [],
   noindex = false,
+  cacheable,
 } = Astro.props;
 
 const site = Astro.site ?? new URL('https://communitylovable.bg');
@@ -30,7 +37,7 @@ const canonical = new URL(canonicalPath ?? Astro.url.pathname, site).href;
 const ogImageUrl = new URL(ogImage, site).href;
 
 // Only edge-cache fully public pages (guests, no flash-message params).
-if (!Astro.locals.user && !noindex && Astro.url.search === '') {
+if (!Astro.locals.user && !noindex && (cacheable ?? Astro.url.search === '')) {
   Astro.response.headers.set('Cache-Control', 'public, max-age=0, s-maxage=60, stale-while-revalidate=300');
 } else {
   Astro.response.headers.set('Cache-Control', 'private, no-store');
