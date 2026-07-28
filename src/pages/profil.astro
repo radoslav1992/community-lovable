@@ -4,6 +4,7 @@ import LovableBadge from '../components/LovableBadge.astro';
 import LovableStatsCard from '../components/LovableStatsCard.astro';
 import { lovableRank } from '../lib/lovable';
 import { initials, memberSince, timeAgo, USER_GRADIENT, ROLE_LABELS } from '../lib/format';
+import { plainText } from '../lib/markdown';
 
 const user = Astro.locals.user;
 if (!user) return Astro.redirect('/vhod');
@@ -15,7 +16,7 @@ const [statsRes, activityRes] = await db.batch([
     .prepare(
       `SELECT
         (SELECT COUNT(*) FROM posts WHERE user_id = ?1 AND hidden = 0) AS post_count,
-        (SELECT COUNT(*) FROM comments WHERE user_id = ?1) AS comment_count,
+        (SELECT COUNT(*) FROM comments WHERE user_id = ?1 AND body != '') AS comment_count,
         (SELECT COALESCE(SUM(base_votes), 0) FROM posts WHERE user_id = ?1 AND hidden = 0)
           + (SELECT COUNT(*) FROM votes v JOIN posts p ON p.id = v.post_id WHERE p.user_id = ?1) AS points`
     )
@@ -27,7 +28,7 @@ const [statsRes, activityRes] = await db.batch([
         FROM posts p WHERE p.user_id = ?1 AND p.hidden = 0
         UNION ALL
         SELECT 'comment' AS kind, c.body AS text, p2.slug AS slug, c.created_at AS created_at
-        FROM comments c JOIN posts p2 ON p2.id = c.post_id WHERE c.user_id = ?1
+        FROM comments c JOIN posts p2 ON p2.id = c.post_id WHERE c.user_id = ?1 AND c.body != ''
       ) ORDER BY created_at DESC LIMIT 10`
     )
     .bind(user.id),
@@ -73,7 +74,7 @@ const activity = activityRes.results as any[];
           <div class="kind">{a.kind === 'post' ? 'ПУБЛИКАЦИЯ' : 'КОМЕНТАР'} · {timeAgo(a.created_at)}</div>
           {a.kind === 'post'
             ? <div class="title">{a.text}</div>
-            : <div class="quote">„{a.text}“</div>}
+            : <div class="quote">„{plainText(a.text).slice(0, 160)}“</div>}
         </a>
       ))}
       {activity.length === 0 && <div class="row empty">Още нямаш активност — сподели първата си публикация!</div>}

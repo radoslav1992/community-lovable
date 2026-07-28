@@ -16,7 +16,7 @@ if (q) {
         `SELECT p.id, p.tag, p.title, p.slug, p.excerpt, p.created_at,
           u.name AS author_name, u.username AS author_username, ${AUTHOR_LOVABLE_SQL},
           p.base_votes + (SELECT COUNT(*) FROM votes v WHERE v.post_id = p.id) AS votes,
-          (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count,
+          (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.body != '') AS comment_count,
           EXISTS(SELECT 1 FROM votes v2 WHERE v2.post_id = p.id AND v2.user_id = ?1) AS voted
         FROM posts p JOIN users u ON u.id = p.user_id
         WHERE p.hidden = 0 AND (p.title LIKE ?2 OR p.body LIKE ?2 OR p.excerpt LIKE ?2)

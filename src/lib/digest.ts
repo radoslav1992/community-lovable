@@ -44,7 +44,7 @@ export async function buildDigest(db: D1Database): Promise<DigestContent | null>
     db.prepare(
       `SELECT p.title, p.slug, p.excerpt, p.tag, u.name AS author_name,
         p.base_votes + (SELECT COUNT(*) FROM votes v WHERE v.post_id = p.id) AS votes,
-        (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id) AS comment_count
+        (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.body != '') AS comment_count
       FROM posts p JOIN users u ON u.id = p.user_id
       WHERE p.hidden = 0 AND p.created_at > datetime('now', '-7 days')
       ORDER BY votes DESC, comment_count DESC
