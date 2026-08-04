@@ -136,6 +136,19 @@ a { color: inherit; text-decoration: none; }
   color: var(--muted);
 }
 
+/* Visually hidden, but present for screen readers and crawlers. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .page-title {
   font-size: 32px;
   font-weight: 900;

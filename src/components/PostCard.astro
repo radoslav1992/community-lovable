@@ -1,6 +1,6 @@
 ---
 import LovableBadge from './LovableBadge.astro';
-import { tagStyle, timeAgo } from '../lib/format';
+import { tagStyle, timeAgo, parseDbDate } from '../lib/format';
 
 interface Props {
   post: {
@@ -40,7 +40,7 @@ const url = `/t/${post.slug}`;
     <div class="meta">
       <a href={`/u/${post.author_username}`} class="author">{post.author_name}</a>
       <LovableBadge verified={post.author_lovable ?? 0} rank={post.author_lovable_rank} edits={post.author_lovable_edits} />
-      <span>{timeAgo(post.created_at)}</span>
+      <time datetime={parseDbDate(post.created_at).toISOString()}>{timeAgo(post.created_at)}</time>
       <a href={`${url}#komentari`} class="comments">💬 {post.comment_count}</a>
     </div>
   </div>

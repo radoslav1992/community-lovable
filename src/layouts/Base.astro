@@ -13,6 +13,10 @@ interface Props {
   /** Serialized JSON-LD structured data blocks. */
   jsonLd?: object[];
   noindex?: boolean;
+  /** Име на автора (или организацията) за <meta name="author">. */
+  author?: string;
+  /** ISO дата на публикуване — emit-ва article:published_time при ogType="article". */
+  publishedTime?: string;
 }
 
 const {
@@ -23,6 +27,8 @@ const {
   ogImage = '/assets/og-color.png',
   jsonLd = [],
   noindex = false,
+  author = 'Българска Lovable Общност',
+  publishedTime,
 } = Astro.props;
 
 const site = Astro.site ?? new URL('https://communitylovable.bg');
@@ -43,6 +49,7 @@ if (!Astro.locals.user && !noindex && Astro.url.search === '') {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     <meta name="description" content={description} />
+    <meta name="author" content={author} />
     <link rel="canonical" href={canonical} />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preload" href="/fonts/CameraPlain.woff2" as="font" type="font/woff2" crossorigin />
@@ -53,6 +60,8 @@ if (!Astro.locals.user && !noindex && Astro.url.search === '') {
     <meta property="og:type" content={ogType} />
     <meta property="og:url" content={canonical} />
     <meta property="og:image" content={ogImageUrl} />
+    {ogType === 'article' && publishedTime && <meta property="article:published_time" content={publishedTime} />}
+    {ogType === 'article' && <meta property="article:author" content={author} />}
     <meta property="og:locale" content="bg_BG" />
     <meta property="og:site_name" content="Българска Lovable Общност" />
     <meta name="twitter:card" content="summary_large_image" />
