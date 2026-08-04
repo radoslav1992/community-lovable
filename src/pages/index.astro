@@ -68,6 +68,34 @@ const eventPlaceShort = nextEvent
 const filters = [{ label: 'Всички', href: '/' }, ...TAGS.map((t) => ({ label: t, href: `/?filtar=${encodeURIComponent(t)}` }))];
 
 const description = 'Мястото на българските Lovable билдъри. Споделяй проекти, задавай въпроси, учи с нас — дискусии, събития, новини и обучение на български.';
+
+const faq = [
+  {
+    q: 'Какво е Lovable?',
+    a: 'Lovable е AI платформа за създаване на уеб приложения — описваш на естествен език какво искаш да построиш, а тя генерира работещо приложение, което можеш да развиваш и публикуваш.',
+  },
+  {
+    q: 'Какво е Българска Lovable Общност?',
+    a: 'Неофициална общност на българските Lovable билдъри, водена от доброволци. Тук споделяме проекти, задаваме въпроси и се учим заедно — с дискусии, събития, новини и обучение изцяло на български език.',
+  },
+  {
+    q: 'Безплатно ли е участието в общността?',
+    a: 'Да, регистрацията и участието са напълно безплатни. Нужен ти е само профил, за да публикуваш, коментираш и гласуваш.',
+  },
+  {
+    q: 'Как да споделя проекта си или да задам въпрос?',
+    a: 'Влез в профила си и натисни „Сподели нещо с общността“ на началната страница. Избери подходящ таг — „Покажи“ за проект или „Помощ“ за въпрос.',
+  },
+  {
+    q: 'Провеждате ли събития на живо?',
+    a: 'Да, организираме редовни срещи на общността. Програмата с предстоящите събития е на страница „Събития“, където можеш да запазиш място.',
+  },
+  {
+    q: 'Откъде да започна, ако съм начинаещ?',
+    a: 'От раздел „Обучение“ — курсове и статии на български, подредени по ниво, включително най-честите грешки на начинаещите и чеклист преди пускане на живо.',
+  },
+];
+
 const jsonLd = [
   {
     '@context': 'https://schema.org',
@@ -81,6 +109,24 @@ const jsonLd = [
       'query-input': 'required name=search_term_string',
     },
   },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'Organization',
+    name: 'Българска Lovable Общност',
+    url: 'https://communitylovable.bg/',
+    logo: 'https://communitylovable.bg/assets/logomark.png',
+    description: 'Неофициална общност на българските Lovable билдъри, водена от доброволци.',
+  },
+  {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    inLanguage: 'bg',
+    mainEntity: faq.map((f) => ({
+      '@type': 'Question',
+      name: f.q,
+      acceptedAnswer: { '@type': 'Answer', text: f.a },
+    })),
+  },
 ];
 ---
 <Base
@@ -91,6 +137,7 @@ const jsonLd = [
 >
   <main>
     <section class="feed">
+      <h1 class="feed-title">Българска Lovable Общност</h1>
       <div class="filters">
         {filters.map((f) => (
           <a
@@ -123,6 +170,7 @@ const jsonLd = [
         </form>
       )}
 
+      <h2 class="sr-only">Последни публикации</h2>
       {posts.map((post) => <PostCard post={post} />)}
       {posts.length === 0 && <div class="card empty">Няма публикации в тази категория — бъди първи!</div>}
 
@@ -150,7 +198,7 @@ const jsonLd = [
 
       {nextEvent && eventDate && (
         <div class="card next-event">
-          <div class="label">СЛЕДВАЩО СЪБИТИЕ</div>
+          <h2 class="label">СЛЕДВАЩО СЪБИТИЕ</h2>
           <div class="event-row">
             <div class="date-chip">
               <div class="day">{eventDate.day.replace(/^0/, '')}</div>
@@ -164,6 +212,16 @@ const jsonLd = [
           <a href="/sabitiya" class="btn btn-outline all-events">Виж всички събития</a>
         </div>
       )}
+
+      <section class="card faq">
+        <h2 class="label">ЧЕСТО ЗАДАВАНИ ВЪПРОСИ</h2>
+        {faq.map((f) => (
+          <details>
+            <summary><h3>{f.q}</h3></summary>
+            <p>{f.a}</p>
+          </details>
+        ))}
+      </section>
     </aside>
   </main>
 </Base>
@@ -179,6 +237,7 @@ const jsonLd = [
     align-items: flex-start;
   }
   .feed { flex: 1 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+  .feed-title { margin: 0; font-size: 26px; font-weight: 900; letter-spacing: -0.02em; line-height: 1.2; }
   .filters { display: flex; gap: 8px; flex-wrap: wrap; }
   .filter {
     padding: 7px 14px; border-radius: 99px; font-size: 13px; font-weight: 700;
@@ -224,7 +283,7 @@ const jsonLd = [
   .stats { display: flex; gap: 18px; font-size: 13px; color: #D8D4C8; }
   .stats b { color: #fff; font-size: 16px; }
   .next-event { border-radius: 18px; padding: 20px; }
-  .label { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--faint); margin-bottom: 12px; }
+  .label { margin: 0 0 12px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--faint); }
   .event-row { display: flex; gap: 14px; align-items: center; }
   .date-chip {
     width: 52px; border-radius: 12px; background: var(--grad-hot);
@@ -235,4 +294,17 @@ const jsonLd = [
   .event-title { font-weight: 800; font-size: 15px; line-height: 1.3; }
   .event-place { font-size: 13px; color: var(--muted); }
   .all-events { margin-top: 14px; width: 100%; font-size: 13px; padding: 9px; }
+  .faq { border-radius: 18px; padding: 20px; }
+  .faq .label { margin-bottom: 6px; }
+  .faq details { border-bottom: 1px solid var(--border); }
+  .faq details:last-child { border-bottom: none; }
+  .faq summary {
+    cursor: pointer; padding: 10px 0; list-style: none;
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after { content: '+'; color: var(--faint); font-weight: 800; flex-shrink: 0; }
+  .faq details[open] summary::after { content: '−'; }
+  .faq h3 { margin: 0; font-size: 14px; font-weight: 700; line-height: 1.4; }
+  .faq p { margin: 0 0 12px; font-size: 13px; line-height: 1.55; color: var(--muted); }
 </style>

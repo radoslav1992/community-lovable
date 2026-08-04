@@ -1,3 +1,31 @@
+# AI асистенти и LLM ботове — изрично разрешени (GEO).
+# Ако Cloudflare "Block AI bots" е включено, то има предимство пред този файл —
+# изключва се от Dashboard → Security → Bots.
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: anthropic-ai
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Google-Extended
+User-agent: GoogleOther
+User-agent: Meta-ExternalAgent
+User-agent: Meta-ExternalFetcher
+User-agent: Applebot-Extended
+User-agent: Amazonbot
+User-agent: CCBot
+User-agent: DuckAssistBot
+User-agent: MistralAI-User
+Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /nastroyki
+Disallow: /profil
+Disallow: /vhod
+
 User-agent: *
 Allow: /
 Disallow: /api/

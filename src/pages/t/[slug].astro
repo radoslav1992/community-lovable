@@ -123,6 +123,8 @@ const jsonLd = [
   canonicalPath={`/t/${post.slug}`}
   ogType="article"
   jsonLd={jsonLd}
+  author={post.author_name}
+  publishedTime={parseDbDate(post.created_at).toISOString()}
 >
   <main>
     <a href="/" class="back">← Назад към емисията</a>
@@ -133,7 +135,7 @@ const jsonLd = [
       <div class="meta">
         <a href={`/u/${post.author_username}`} class="author">{post.author_name}</a>
         <LovableBadge verified={post.author_lovable} rank={post.author_lovable_rank} edits={post.author_lovable_edits} />
-        <span>{timeAgo(post.created_at)}</span>
+        <time datetime={parseDbDate(post.created_at).toISOString()}>{timeAgo(post.created_at)}</time>
       </div>
       <p class="body">{post.body}</p>
       <div class="actions" data-vote-scope>
@@ -196,7 +198,7 @@ const jsonLd = [
               <div class="c-head">
                 <a href={`/u/${c.author_username}`} class="c-author">{c.author_name}</a>
                 <LovableBadge verified={c.author_lovable} rank={c.author_lovable_rank} edits={c.author_lovable_edits} />
-                <span class="c-time">{timeAgo(c.created_at)}</span>
+                <time class="c-time" datetime={parseDbDate(c.created_at).toISOString()}>{timeAgo(c.created_at)}</time>
               </div>
               <div class="c-body md" set:html={renderMarkdown(c.body)} />
               <div class="c-actions" data-vote-scope>

@@ -23,6 +23,7 @@ const jsonLd = [
     datePublished: parseDbDate(item.published_at).toISOString(),
     inLanguage: 'bg',
     url: `https://communitylovable.bg/novini/${item.slug}`,
+    author: { '@type': 'Organization', name: 'Българска Lovable Общност', url: 'https://communitylovable.bg' },
     publisher: { '@type': 'Organization', name: 'Българска Lovable Общност', url: 'https://communitylovable.bg' },
   },
 ];
@@ -33,11 +34,15 @@ const jsonLd = [
   canonicalPath={`/novini/${item.slug}`}
   ogType="article"
   jsonLd={jsonLd}
+  publishedTime={parseDbDate(item.published_at).toISOString()}
 >
   <main>
     <a href="/novini" class="back">← Всички новини</a>
     <article class="card">
-      <div class="date">{bgDate(item.published_at)}{item.featured ? ' · АКЦЕНТ' : ''}</div>
+      <div class="date">
+        <time datetime={parseDbDate(item.published_at).toISOString()}>{bgDate(item.published_at)}</time>
+        {item.featured ? ' · АКЦЕНТ' : ''}
+      </div>
       <h1>{item.title}</h1>
       {paragraphs.map((p: string) => <p>{p}</p>)}
     </article>
