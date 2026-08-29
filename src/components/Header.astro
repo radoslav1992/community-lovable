@@ -6,6 +6,7 @@ const path = Astro.url.pathname;
 
 const tabs = [
   { href: '/', label: 'Начало', active: path === '/' || path.startsWith('/t/') },
+  { href: '/proekti', label: 'Проекти', active: path.startsWith('/proekti') },
   { href: '/sabitiya', label: 'Събития', active: path.startsWith('/sabitiya') },
   { href: '/novini', label: 'Новини', active: path.startsWith('/novini') },
   { href: '/obuchenie', label: 'Обучение', active: path.startsWith('/obuchenie') },
