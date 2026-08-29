@@ -88,10 +88,10 @@ src/
   lib/                   auth (PBKDF2 + сесии), slug (транслитерация),
                          format (дати на български, тагове, аватари)
   middleware.ts          зарежда потребителя от сесийната бисквитка
-  pages/                 / (емисия), /t/[slug] (тема), /sabitiya, /novini,
+  pages/                 / (емисия), /t/[slug] (тема), /proekti, /sabitiya, /novini,
                          /obuchenie, /vhod, /profil, /nastroyki, /admin,
                          /tarsene, sitemap-index.xml, sitemap.xml, sitemap-posts, rss.xml, 404
-  pages/api/             auth, posts, comments, vote, rsvp, settings,
+  pages/api/             auth, posts, projects, comments, vote, rsvp, settings,
                          account/delete, admin/block, admin/report
 ```
 
@@ -100,6 +100,12 @@ src/
 - **Емисия** — филтри по категория, композер за нови публикации, гласуване
   (работи и без JavaScript), брояч на членове/теми/онлайн, следващо събитие
 - **Теми** — коментари, отговори, гласуване, structured data
+- **Проекти** — публична галерия (`/proekti`) с приложения, направени с
+  Lovable: всеки влязъл член добавя линк към живия си проект (адресът се
+  нормализира и не се допускат дубликати), избира категория и кратко описание;
+  общността харесва проектите (работи и без JavaScript), а филтрите подреждат по
+  категория или по най-харесвани. Авторът — и модератор/админ — може да премахне
+  проект
 - **Събития** — „Ще дойда“ RSVP с брояч
 - **Вход/регистрация** — имейл + парола; OAuth бутоните са placeholder („скоро“)
 - **Профил** — статистика (публикации, коментари, точки) и последна активност

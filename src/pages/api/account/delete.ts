@@ -12,10 +12,12 @@ export const POST: APIRoute = async ({ locals, cookies, redirect }) => {
 
   const db = locals.runtime.env.DB;
   const commentVotes = await hasTable(db, 'comment_votes');
+  const projectVotes = await hasTable(db, 'project_votes');
   await db.batch([
     db.prepare('DELETE FROM sessions WHERE user_id = ?').bind(user.id),
     db.prepare('DELETE FROM votes WHERE user_id = ?').bind(user.id),
     ...(commentVotes ? [db.prepare('DELETE FROM comment_votes WHERE user_id = ?').bind(user.id)] : []),
+    ...(projectVotes ? [db.prepare('DELETE FROM project_votes WHERE user_id = ?').bind(user.id)] : []),
     db.prepare('DELETE FROM rsvps WHERE user_id = ?').bind(user.id),
     db
       .prepare(

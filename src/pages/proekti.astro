@@ -1,0 +1,276 @@
+---
+import Base from '../layouts/Base.astro';
+import {
+  PROJECT_CATEGORIES,
+  categoryStyle,
+  displayUrl,
+  isLovableUrl,
+  projectGradient,
+  projectMonogram,
+} from '../lib/projects';
+import { hasTable } from '../lib/schema';
+import { timeAgo, parseDbDate } from '../lib/format';
+
+const db = Astro.locals.runtime.env.DB;
+const user = Astro.locals.user;
+const params = Astro.url.searchParams;
+
+const error = params.get('greshka');
+const added = params.get('dobaven') === '1';
+const removed = params.get('iztrit') === '1';
+const formOpen = params.get('dobavi') === '1' && !!user;
+
+const categoryParam = params.get('kategoriya');
+const activeCategory = categoryParam && PROJECT_CATEGORIES.includes(categoryParam) ? categoryParam : null;
+const popular = params.get('red') === 'populyarni';
+
+// Таблицата идва с миграция 0014 — worker-ът може да е деплойнат преди нея.
+const ready = await hasTable(db, 'projects');
+
+const projects = ready
+  ? (
+      await db
+        .prepare(
+          `SELECT p.id, p.title, p.url, p.tagline, p.category, p.author_name, p.created_at,
+             u.name AS user_name, u.username AS user_username,
+             p.base_votes + (SELECT COUNT(*) FROM project_votes pv WHERE pv.project_id = p.id) AS votes,
+             EXISTS(SELECT 1 FROM project_votes pv2 WHERE pv2.project_id = p.id AND pv2.user_id = ?1) AS voted
+           FROM projects p LEFT JOIN users u ON u.id = p.user_id
+           WHERE p.hidden = 0 ${activeCategory ? 'AND p.category = ?2' : ''}
+           ORDER BY ${popular ? 'votes DESC, p.created_at DESC' : 'p.created_at DESC'}
+           LIMIT 200`
+        )
+        .bind(...(activeCategory ? [user?.id ?? 0, activeCategory] : [user?.id ?? 0]))
+        .all<any>()
+    ).results
+  : [];
+
+function listUrl(next: { kategoriya?: string | null; red?: string | null }): string {
+  const q = new URLSearchParams();
+  const category = next.kategoriya === undefined ? activeCategory : next.kategoriya;
+  const order = next.red === undefined ? (popular ? 'populyarni' : null) : next.red;
+  if (category) q.set('kategoriya', category);
+  if (order) q.set('red', order);
+  const qs = q.toString();
+  return qs ? `/proekti?${qs}` : '/proekti';
+}
+
+const isStaff = user?.role === 'admin' || user?.role === 'moderator';
+const back = Astro.url.pathname + Astro.url.search;
+
+const description =
+  'Проекти, направени с Lovable от българската общност — линкове към живи приложения, инструменти и сайтове. Сподели своя проект и гласувай за любимите си.';
+
+const jsonLd = [
+  {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: 'Проекти с Lovable',
+    description,
+    url: 'https://communitylovable.bg/proekti',
+    inLanguage: 'bg',
+    mainEntity: {
+      '@type': 'ItemList',
+      numberOfItems: projects.length,
+      itemListElement: projects.map((p: any, i: number) => ({
+        '@type': 'ListItem',
+        position: i + 1,
+        item: {
+          '@type': 'WebApplication',
+          name: p.title,
+          url: p.url,
+          description: p.tagline || undefined,
+          applicationCategory: p.category,
+          author: { '@type': 'Person', name: p.user_name ?? p.author_name ?? 'Общността' },
+        },
+      })),
+    },
+  },
+];
+---
+<Base
+  title="Проекти с Lovable — Българска Lovable Общност"
+  description={description}
+  canonicalPath="/proekti"
+  jsonLd={jsonLd}
+>
+  <main>
+    <h1 class="page-title">Проекти</h1>
+    <p class="page-sub">
+      Живи приложения, направени с Lovable от българската общност. Сподели своя проект — линкът е публичен и всеки може да го отвори.
+    </p>
+
+    {error === 'blokiran' && <div class="notice notice-error">Профилът ти е блокиран и не може да добавя проекти.</div>}
+    {error === 'zaglavie' && <div class="notice notice-error">Проектът трябва да има име.</div>}
+    {error === 'adres' && <div class="notice notice-error">Адресът не изглежда валиден — постави пълния линк, например https://free-website-analyzer.lovable.app</div>}
+    {error === 'dublikat' && <div class="notice notice-error">Този проект вече е споделен в галерията.</div>}
+    {error === 'prava' && <div class="notice notice-error">Можеш да премахваш само собствените си проекти.</div>}
+    {added && <div class="notice notice-ok">Проектът е добавен — благодарим, че споделяш!</div>}
+    {removed && <div class="notice notice-ok">Проектът е премахнат.</div>}
+
+    <div class="toolbar">
+      <div class="filters">
+        <a href={listUrl({ kategoriya: null })} class:list={['filter', { active: !activeCategory }]}>Всички</a>
+        {PROJECT_CATEGORIES.map((c) => (
+          <a href={listUrl({ kategoriya: c })} class:list={['filter', { active: c === activeCategory }]}>{c}</a>
+        ))}
+      </div>
+      <div class="sorts">
+        <a href={listUrl({ red: null })} class:list={['sort', { active: !popular }]}>Най-нови</a>
+        <a href={listUrl({ red: 'populyarni' })} class:list={['sort', { active: popular }]}>Най-харесвани</a>
+      </div>
+    </div>
+
+    {user && !formOpen && (
+      <a href="/proekti?dobavi=1#dobavi" id="dobavi" class="add-closed">+ Добави проект, направен с Lovable…</a>
+    )}
+    {!user && <a href="/vhod" class="add-closed">Влез, за да добавиш свой проект…</a>}
+    {formOpen && (
+      <form id="dobavi" class="add-form" method="post" action="/api/projects">
+        <label>
+          <span>Име на проекта</span>
+          <input class="input" name="title" placeholder="Free Website Analyzer" maxlength="120" required autofocus />
+        </label>
+        <label>
+          <span>Адрес</span>
+          <input class="input" name="url" type="url" inputmode="url" placeholder="https://твоят-проект.lovable.app" required />
+        </label>
+        <label>
+          <span>С едно изречение</span>
+          <textarea class="input" name="tagline" rows="2" maxlength="300" placeholder="Какво прави проектът и за кого е?"></textarea>
+        </label>
+        <label>
+          <span>Категория</span>
+          <select class="input" name="category">
+            {PROJECT_CATEGORIES.map((c) => <option value={c}>{c}</option>)}
+          </select>
+        </label>
+        <div class="form-actions">
+          <a href="/proekti" class="btn btn-muted">Отказ</a>
+          <button type="submit" class="btn btn-dark">Публикувай проекта</button>
+        </div>
+      </form>
+    )}
+
+    <h2 class="sr-only">Списък с проекти</h2>
+    <div class="grid">
+      {projects.map((p: any) => (
+        <article class="card project">
+          <a class="thumb" href={p.url} target="_blank" rel="ugc noopener" style={`background:${projectGradient(p.id)}`}>
+            <span>{projectMonogram(p.title)}</span>
+          </a>
+          <div class="body">
+            <div class="head">
+              <h3><a href={p.url} target="_blank" rel="ugc noopener">{p.title}</a></h3>
+              <span class="tag" style={categoryStyle(p.category)}>{p.category}</span>
+            </div>
+            <a class="link" href={p.url} target="_blank" rel="ugc noopener">
+              {displayUrl(p.url)}
+              {isLovableUrl(p.url) && <span class="on-lovable">на Lovable</span>}
+            </a>
+            {p.tagline && <p>{p.tagline}</p>}
+            <div class="meta">
+              {p.user_username ? (
+                <a href={`/u/${p.user_username}`} class="author">{p.user_name}</a>
+              ) : (
+                <span class="author">{p.author_name || 'Общността'}</span>
+              )}
+              <time datetime={parseDbDate(p.created_at).toISOString()}>{timeAgo(p.created_at)}</time>
+              {(isStaff || (!!p.user_username && user?.username === p.user_username)) && (
+                <form method="post" action="/api/projects/delete" class="remove">
+                  <input type="hidden" name="project_id" value={p.id} />
+                  <button type="submit">Премахни</button>
+                </form>
+              )}
+            </div>
+          </div>
+          <div class="vote-col" data-vote-scope>
+            <form method="post" action="/api/projects/vote" data-vote>
+              <input type="hidden" name="project_id" value={p.id} />
+              <input type="hidden" name="back" value={back} />
+              <button type="submit" class:list={['vote-btn', { voted: !!p.voted }]} aria-label="Харесай проекта">▲</button>
+            </form>
+            <span class="vote-count" data-vote-count>{p.votes}</span>
+          </div>
+        </article>
+      ))}
+      {projects.length === 0 && (
+        <div class="card empty">
+          {ready
+            ? 'Още няма споделени проекти в тази категория — бъди първият!'
+            : 'Галерията с проекти се подготвя — върни се съвсем скоро.'}
+        </div>
+      )}
+    </div>
+  </main>
+</Base>
+
+<script src="../scripts/vote.ts"></script>
+
+<style>
+  main { max-width: 980px; margin: 0 auto; padding: 32px 24px; display: flex; flex-direction: column; gap: 16px; }
+  .page-sub { margin: 0; max-width: 640px; }
+  .toolbar { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; flex: 1; }
+  .filter {
+    padding: 7px 14px; border-radius: 99px; font-size: 13px; font-weight: 700;
+    border: 1px solid var(--border-input); background: #fff; color: var(--muted);
+  }
+  .filter:hover { border-color: var(--ink); }
+  .filter.active { border-color: var(--ink); background: var(--ink); color: var(--cream); }
+  .sorts { display: flex; gap: 4px; }
+  .sort { padding: 7px 12px; border-radius: 99px; font-size: 13px; font-weight: 700; color: var(--faint); }
+  .sort:hover { color: var(--ink); background: var(--hover-bg); }
+  .sort.active { color: var(--accent); }
+
+  .add-closed {
+    display: block; background: #fff; border: 1px solid var(--border);
+    border-radius: 16px; padding: 14px 18px; color: var(--faint); font-size: 15px; cursor: pointer;
+  }
+  .add-closed:hover { border-color: var(--accent); }
+  .add-form {
+    background: #fff; border: 1.5px solid var(--accent); border-radius: 16px;
+    padding: 18px; display: flex; flex-direction: column; gap: 12px; animation: fadeUp 0.2s ease;
+  }
+  .add-form label { display: flex; flex-direction: column; gap: 5px; }
+  .add-form label span { font-size: 13px; font-weight: 800; color: var(--muted); }
+  .add-form textarea { resize: vertical; line-height: 1.5; }
+  .form-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 16px; }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .project { padding: 18px 20px; display: flex; gap: 16px; transition: box-shadow 0.15s; }
+  .project:hover { box-shadow: 0 4px 16px rgba(27, 27, 27, 0.06); }
+  .thumb {
+    width: 56px; height: 56px; border-radius: 14px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 24px; font-weight: 900;
+  }
+  .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+  .head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  h3 { margin: 0; font-size: 18px; font-weight: 800; line-height: 1.3; letter-spacing: -0.01em; }
+  h3 a:hover { color: var(--accent); }
+  .link { font-size: 13px; font-weight: 700; color: var(--accent); overflow-wrap: anywhere; }
+  .link:hover { text-decoration: underline; }
+  .on-lovable {
+    margin-left: 6px; font-size: 11px; font-weight: 800; color: var(--muted);
+    background: var(--hover-bg); border-radius: 99px; padding: 2px 8px; white-space: nowrap;
+  }
+  .body p { margin: 0; font-size: 15px; color: var(--muted); line-height: 1.5; }
+  .meta { display: flex; gap: 14px; align-items: center; font-size: 13px; color: var(--faint); font-weight: 600; margin-top: 2px; }
+  .author { color: var(--ink-body); }
+  a.author:hover { color: var(--accent); }
+  .remove button {
+    border: none; background: none; padding: 0; cursor: pointer;
+    font-size: 13px; font-weight: 600; color: var(--faint);
+  }
+  .remove button:hover { color: var(--danger); }
+  .vote-col { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; width: 36px; }
+  .vote-btn {
+    border: none; background: none; font-size: 16px; cursor: pointer;
+    padding: 2px; line-height: 1; color: var(--faint);
+  }
+  .vote-btn:hover, .vote-btn.voted { color: var(--accent); }
+  .vote-count { font-weight: 800; font-size: 15px; }
+  .empty { padding: 22px; font-size: 14px; color: var(--faint); font-weight: 600; }
+</style>
