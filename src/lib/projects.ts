@@ -58,6 +58,36 @@ export function normalizeProjectUrl(raw: string): string | null {
   return `https://${host}${path}${url.search}`;
 }
 
+/**
+ * Линк за ремикс — приема се само адрес в lovable.dev, защото само там
+ * ремиксът е реален. Връща null при всичко останало.
+ */
+export function normalizeRemixUrl(raw: string): string | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const url = normalizeProjectUrl(s);
+  if (!url) return null;
+  try {
+    const host = new URL(url).hostname.toLowerCase();
+    return host === 'lovable.dev' ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+const MAX_TAGS = 4;
+
+/** "SEO, Производителност" → ["SEO", "Производителност"]; чисти празни и дълги. */
+export function parseTags(raw: string): string[] {
+  const seen = new Set<string>();
+  for (const part of raw.split(/[,;]/)) {
+    const tag = part.trim().replace(/\s+/g, ' ').slice(0, 24);
+    if (tag) seen.add(tag);
+    if (seen.size >= MAX_TAGS) break;
+  }
+  return [...seen];
+}
+
 /** Кратък вид на адреса за карта на проекта: "free-website-analyzer.lovable.app". */
 export function displayUrl(url: string): string {
   try {

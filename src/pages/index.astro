@@ -3,6 +3,8 @@ import Base from '../layouts/Base.astro';
 import PostCard from '../components/PostCard.astro';
 import { AUTHOR_LOVABLE_SQL } from '../lib/lovable';
 import { TAGS, eventDayMonth } from '../lib/format';
+import { parseTags, projectGradient, projectMonogram } from '../lib/projects';
+import { hasColumn, hasTable } from '../lib/schema';
 
 const db = Astro.locals.runtime.env.DB;
 const user = Astro.locals.user;
@@ -45,6 +47,20 @@ const [postsRes, stats, nextEvent] = await Promise.all([
     .prepare(`SELECT title, slug, starts_at, place FROM events WHERE starts_at > datetime('now') ORDER BY starts_at LIMIT 1`)
     .first<{ title: string; slug: string; starts_at: string; place: string }>(),
 ]);
+
+// Избраният проект от галерията (миграции 0014/0015) — worker-ът може да е
+// деплойнат преди тях.
+const featuredProject =
+  (await hasTable(db, 'projects')) && (await hasColumn(db, 'projects', 'featured'))
+    ? await db
+        .prepare(
+          `SELECT p.id, p.title, p.url, p.tagline, p.tags, p.remix_url, u.username AS user_username, u.name AS user_name
+           FROM projects p LEFT JOIN users u ON u.id = p.user_id
+           WHERE p.featured = 1 AND p.hidden = 0
+           ORDER BY p.created_at DESC LIMIT 1`
+        )
+        .first<any>()
+    : null;
 
 const allRows = postsRes.results as any[];
 const hasMore = allRows.length > PER_PAGE;
@@ -187,7 +203,9 @@ const jsonLd = [
         <img class="hero-bg" src="/assets/og-dark.png" alt="" />
         <div class="hero-content">
           <img class="hero-logo" src="/assets/wordmark-light.png" alt="Lovable" />
-          <p>Мястото на българските билдъри. Споделяй проекти, задавай въпроси, учи с нас.</p>
+          <p class="hero-lead">Място за хора, които създават истински продукти с AI.</p>
+          <p class="hero-sub">Споделяй проекти · Учи · Помагай · Бъди част от общността</p>
+          <a href="/proekti?dobavi=1#dobavi" class="btn hero-cta">Покажи проект</a>
           <div class="stats">
             <div><b>{nf.format(stats?.members ?? 0)}</b><br />членове</div>
             <div><b>{nf.format(stats?.topics ?? 0)}</b><br />теми</div>
@@ -195,6 +213,29 @@ const jsonLd = [
           </div>
         </div>
       </div>
+
+      {featuredProject && (
+        <div class="card featured">
+          <h2 class="label">🇧🇬 СЪЗДАДЕНО ОТ ОБЩНОСТТА</h2>
+          <div class="featured-row">
+            <span class="featured-thumb" style={`background:${projectGradient(featuredProject.id)}`}>
+              {projectMonogram(featuredProject.title)}
+            </span>
+            <div class="featured-title">{featuredProject.title}</div>
+          </div>
+          {featuredProject.tagline && <p class="featured-sub">{featuredProject.tagline}</p>}
+          {parseTags(featuredProject.tags ?? '').length > 0 && (
+            <div class="featured-chips">
+              {parseTags(featuredProject.tags ?? '').map((t: string) => <span class="chip">{t}</span>)}
+            </div>
+          )}
+          <a class="btn btn-accent featured-cta" href={featuredProject.url} target="_blank" rel="ugc noopener">Опитай →</a>
+          <div class="featured-meta">
+            Направено с Lovable · Безплатно{featuredProject.remix_url ? ' · Може да се ремиксира' : ''}
+          </div>
+          <a class="featured-all" href="/proekti">Виж всички проекти</a>
+        </div>
+      )}
 
       {nextEvent && eventDate && (
         <div class="card next-event">
@@ -279,9 +320,31 @@ const jsonLd = [
   .hero-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.55; }
   .hero-content { position: relative; }
   .hero-logo { height: 22px; object-fit: contain; margin-bottom: 10px; }
-  .hero p { margin: 0 0 14px; font-size: 14px; line-height: 1.55; }
+  .hero p { margin: 0 0 6px; font-size: 14px; line-height: 1.55; }
+  .hero-lead { font-weight: 700; }
+  .hero-sub { color: #D8D4C8; font-size: 13px !important; }
+  .hero-cta { background: #fff; color: var(--ink); margin: 8px 0 14px; }
+  .hero-cta:hover { background: var(--cream); }
   .stats { display: flex; gap: 18px; font-size: 13px; color: #D8D4C8; }
   .stats b { color: #fff; font-size: 16px; }
+  .featured { border-radius: 18px; padding: 20px; }
+  .featured-row { display: flex; gap: 12px; align-items: center; }
+  .featured-thumb {
+    width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 18px; font-weight: 900;
+  }
+  .featured-title { font-size: 16px; font-weight: 800; letter-spacing: -0.01em; }
+  .featured-sub { margin: 10px 0 0; font-size: 14px; color: var(--muted); line-height: 1.5; }
+  .featured-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .chip {
+    font-size: 12px; font-weight: 700; color: var(--muted);
+    background: var(--hover-bg); border-radius: 99px; padding: 3px 10px; white-space: nowrap;
+  }
+  .featured-cta { width: 100%; margin-top: 14px; }
+  .featured-meta { margin-top: 8px; font-size: 12px; color: var(--faint); font-weight: 600; text-align: center; }
+  .featured-all { display: block; margin-top: 10px; text-align: center; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .featured-all:hover { color: var(--accent); }
   .next-event { border-radius: 18px; padding: 20px; }
   .label { margin: 0 0 12px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: var(--faint); }
   .event-row { display: flex; gap: 14px; align-items: center; }
