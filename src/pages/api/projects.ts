@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
-import { PROJECT_CATEGORIES, normalizeProjectUrl } from '../../lib/projects';
-import { hasTable } from '../../lib/schema';
+import { PROJECT_CATEGORIES, normalizeProjectUrl, normalizeRemixUrl, parseTags } from '../../lib/projects';
+import { hasColumn, hasTable } from '../../lib/schema';
 
 /** Добавяне на проект в публичния showcase (/proekti). */
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
@@ -17,6 +17,8 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const categoryRaw = String(form.get('category') ?? 'Друго');
   const category = PROJECT_CATEGORIES.includes(categoryRaw) ? categoryRaw : 'Друго';
   const url = normalizeProjectUrl(String(form.get('url') ?? ''));
+  const remixUrl = normalizeRemixUrl(String(form.get('remix_url') ?? ''));
+  const tags = parseTags(String(form.get('tags') ?? '')).join(',');
 
   if (!title) return redirect('/proekti?dobavi=1&greshka=zaglavie#dobavi', 303);
   if (!url) return redirect('/proekti?dobavi=1&greshka=adres#dobavi', 303);
@@ -24,10 +26,21 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const duplicate = await db.prepare('SELECT id FROM projects WHERE url = ?').bind(url).first();
   if (duplicate) return redirect('/proekti?greshka=dublikat', 303);
 
-  await db
-    .prepare('INSERT INTO projects (user_id, title, url, tagline, category) VALUES (?, ?, ?, ?, ?)')
-    .bind(user.id, title, url, tagline, category)
-    .run();
+  // Витрината (миграция 0015) може още да не е приложена — тогава пишем само
+  // основните колони.
+  if (await hasColumn(db, 'projects', 'remix_url')) {
+    await db
+      .prepare(
+        'INSERT INTO projects (user_id, title, url, tagline, category, tags, remix_url) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      )
+      .bind(user.id, title, url, tagline, category, tags, remixUrl)
+      .run();
+  } else {
+    await db
+      .prepare('INSERT INTO projects (user_id, title, url, tagline, category) VALUES (?, ?, ?, ?, ?)')
+      .bind(user.id, title, url, tagline, category)
+      .run();
+  }
 
   return redirect('/proekti?dobaven=1', 303);
 };
